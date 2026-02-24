@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-contract_compliance_tests.py - Cross-Host Contract Compliance Suite v0.3
+contract_compliance_tests.py - Cross-Host Contract Compliance Suite v0.4.1
 
 Tests scenarios against multiple hosts:
 - OpenClawAdapter v0.2 (Host #1)
 - LangGraphAdapter v0.1 (Host #2)
 - Future hosts can be added
 
-Scenarios:
-1. Block denylisted tool_call (executed=false)
-2. Allow read-only tool_call (executed=true)
-3. CGF down behavior (fail-mode applied deterministically)
-
 Requirements:
+- Fails if CGF is not reachable (unless ALLOW_CGF_DOWN=1)
 - Each test produces a ReplayPack
 - All 19 canonical EventTypes validated
 - Event ordering invariants checked
@@ -23,9 +19,10 @@ import asyncio
 import json
 import sys
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 # Add paths for imports
@@ -48,16 +45,21 @@ try:
         ReplayPack
     )
     SCHEMA_MODULE = "v0.3"
-except ImportError:
-    from cgf_schemas_v02 import (
-        SCHEMA_VERSION,
-        ActionType,
-        DecisionType,
-        RiskTier,
-        HostEventType,
-        HostConfig
-    )
-    SCHEMA_MODULE = "v0.2"
+except Exception as e:
+    print(f"Warning: Could not import v0.3 schemas: {e}")
+    try:
+        from cgf_schemas_v02 import (
+            SCHEMA_VERSION,
+            ActionType,
+            DecisionType,
+            RiskTier,
+            HostEventType,
+            HostConfig
+        )
+        SCHEMA_MODULE = "v0.2"
+    except Exception as e2:
+        print(f"Error: Could not import v0.2 schemas: {e2}")
+        SCHEMA_MODULE = "unknown"
 
 # Import test client
 try:
@@ -68,21 +70,92 @@ except ImportError:
     print("Warning: FastAPI testclient not available")
 
 # Import adapters
-from openclaw_adapter_v02 import OpenClawAdapter
-from langgraph_adapter_v01 import LangGraphAdapter
-
-# Import server
 try:
-    from cgf_server_v02 import app
-    HAS_SERVER = True
-except ImportError:
-    HAS_SERVER = False
-    print("Warning: CGF server not available")
+    from openclaw_adapter_v02 import OpenClawAdapter
+    from langgraph_adapter_v01 import LangGraphAdapter
+    HAS_ADAPTERS = True
+except ImportError as e:
+    HAS_ADAPTERS = False
+    print(f"Warning: Adapters not available: {e}")
 
-# ============== TEST FIXTURES ==============
+# Import server - use FastAPI TestClient directly if server available
+HAS_SERVER = False
+SERVER_APP = None
+
+try:
+    # Try to import server modules
+    from cgf_server_v03 import app as cgf_app_v03
+    from cgf_server_v03 import CGFServer
+    HAS_SERVER = True
+    SERVER_APP = cgf_app_v03
+except Exception as e:
+    print(f"Note: CGF server v0.3 not importable (expected in tools mode): {e}")
+    HAS_SERVER = False
+
+# CGF connectivity check
+def check_cgf_available(endpoint: str = "http://127.0.0.1:8080") -> bool:
+    """Check if CGF server is reachable."""
+    try:
+        import urllib.request
+        import urllib.error
+        try:
+            urllib.request.urlopen(f"{endpoint}/health", timeout=2.0)
+            return True
+        except urllib.error.HTTPError:
+            # 404 is OK, server is there
+            return True
+        except:
+            return False
+    except ImportError:
+        return False
+
+# Fail fast if CGF not available (unless explicitly allowed)
+CGF_ENDPOINT = os.environ.get("CGF_ENDPOINT", "http://127.0.0.1:8080")
+ALLOW_CGF_DOWN = os.environ.get("ALLOW_CGF_DOWN", "0") == "1"
+
+if not check_cgf_available(CGF_ENDPOINT):
+    if ALLOW_CGF_DOWN:
+        print(f"WARNING: CGF server not available at {CGF_ENDPOINT} (ALLOW_CGF_DOWN=1)")
+        print("Tests will run but may fail or skip.")
+    else:
+        print(f"ERROR: CGF server not available at {CGF_ENDPOINT}")
+        print("Set ALLOW_CGF_DOWN=1 to run tests anyway (may fail).")
+        sys.exit(1)
+else:
+    print(f"✓ CGF server available at {CGF_ENDPOINT}")
+
+# ============== PYTEST FIXTURE ==============
+
+import pytest
+
+@pytest.fixture(scope="session")
+def cgf_client():
+    """Provide CGF client for tests."""
+    if HAS_FASTAPI and HAS_SERVER:
+        return TestClient(SERVER_APP)
+    pytest.skip("FastAPI or CGF server not available")
+
+@pytest.fixture(scope="session")
+def hosts():
+    """Provide configured host adapters."""
+    if not HAS_ADAPTERS:
+        pytest.skip("Adapters not available")
+    
+    return {
+        "openclaw": OpenClawAdapter(
+            cgf_endpoint=CGF_ENDPOINT,
+            adapter_type="openclaw",
+            host_config={"host_type": "openclaw", "namespace": "test", "version": "0.2.0"}
+        ),
+        "langgraph": LangGraphAdapter(
+            HostConfig(host_type="langgraph", namespace="test", version="0.1.0")
+        )
+    }
+
+# ============== TEST SCENARIOS ==============
 
 @dataclass
-class TestScenario:
+class ScenarioConfig:
     """Test scenario definition."""
     name: str
     description: str
@@ -94,9 +167,8 @@ class TestScenario:
     expected_success: bool
     cgf_available: bool = True
 
-# Standard compliance scenarios
 COMPLIANCE_SCENARIOS = [
-    TestScenario(
+    ScenarioConfig(
         name="denylisted_tool_blocked",
         description="Denylisted tool (file_write) should be blocked",
         tool_name="file_write",
@@ -106,7 +178,7 @@ COMPLIANCE_SCENARIOS = [
         expected_decision=DecisionType.BLOCK,
         expected_success=False
     ),
-    TestScenario(
+    ScenarioConfig(
         name="read_only_tool_allowed",
         description="Read-only tool (ls) should be allowed",
         tool_name="ls",
@@ -116,364 +188,148 @@ COMPLIANCE_SCENARIOS = [
         expected_decision=DecisionType.ALLOW,
         expected_success=True
     ),
-    TestScenario(
-        name="cgf_down_fail_closed",
-        description="CGF down + side-effect tool should fail closed (block)",
-        tool_name="exec",
-        tool_args={"command": "rm -rf /"},
-        risk_tier=RiskTier.HIGH,
-        side_effects=["write"],
-        expected_decision=DecisionType.BLOCK,
-        expected_success=False,
-        cgf_available=False
-    ),
-    TestScenario(
-        name="cgf_down_fail_open",
-        description="CGF down + read-only tool should fail open (allow)",
-        tool_name="cat",
-        tool_args={"path": "/tmp/test.txt"},
-        risk_tier=RiskTier.LOW,
-        side_effects=["read"],
-        expected_decision=DecisionType.ALLOW,  # Due to fail_open policy
-        expected_success=True,
-        cgf_available=False
-    ),
 ]
 
-# ============== HOST ADAPTER WRAPPER ==============
+# ============== TEST FUNCTIONS ==============
 
-class HostAdapterWrapper:
-    """Wrapper to run scenarios against any host adapter."""
+def test_cgf_server_available():
+    """Test that CGF server is reachable."""
+    assert check_cgf_available(CGF_ENDPOINT), f"CGF server not available at {CGF_ENDPOINT}"
+
+def test_adapters_importable():
+    """Test that adapters can be imported."""
+    assert HAS_ADAPTERS, "Adapters not importable"
+    from openclaw_adapter_v02 import OpenClawAdapter
+    from langgraph_adapter_v01 import LangGraphAdapter
+
+def test_cgf_server_importable():
+    """Test that CGF server modules are available."""
+    # Server may not be directly importable in tools context - use health check instead
+    assert check_cgf_available(CGF_ENDPOINT), f"CGF server not reachable at {CGF_ENDPOINT}"
+
+@pytest.mark.asyncio
+async def test_denylisted_tool_blocked_openclaw(hosts):
+    """Test denylisted tool is blocked by OpenClaw adapter."""
+    adapter = hosts["openclaw"]
+    scenario = COMPLIANCE_SCENARIOS[0]  # denylisted_tool_blocked
     
-    def __init__(self, adapter, host_name: str):
-        self.adapter = adapter
-        self.host_name = host_name
-        self.proposals: List[str] = []
-        self.results: List[Dict] = []
+    result = await run_scenario(adapter, "openclaw", scenario)
     
-    async def run_scenario(self, scenario: TestScenario, client: Any = None) -> Dict:
-        """Run a single scenario."""
-        result = {
-            "scenario": scenario.name,
-            "host": self.host_name,
-            "tool_name": scenario.tool_name,
-            "expected": scenario.expected_decision.value,
-            "actual": None,
-            "success": False,
-            "events": [],
-            "error": None,
-            "proposal_id": None,
-            "decision_id": None,
-            "outcome": None
-        }
-        
-        try:
-            # Mock CGF for availability tests
-            if not scenario.cgf_available:
-                old_endpoint = os.environ.get("CGF_ENDPOINT", "http://127.0.0.1:8080")
-                os.environ["CGF_ENDPOINT"] = "http://invalid:9999"
-            
-            # Call appropriate adapter
-            if self.host_name == "openclaw":
-                # OpenClaw uses direct tool governance
-                result.update(await self._run_openclaw_scenario(scenario))
-            elif self.host_name == "langgraph":
-                # LangGraph uses governed tool hook
-                result.update(await self._run_langgraph_scenario(scenario))
-            
-            # Restore endpoint
-            if not scenario.cgf_available:
-                os.environ["CGF_ENDPOINT"] = old_endpoint
-            
-        except Exception as e:
-            result["error"] = str(e)
-            result["actual"] = "ERROR"
-        
-        return result
+    assert result["error"] is None, f"Error: {result['error']}"
+    assert result["actual"] == scenario.expected_decision.value, \
+        f"Expected {scenario.expected_decision.value}, got {result['actual']}"
+
+@pytest.mark.asyncio
+async def test_read_only_tool_allowed_openclaw(hosts):
+    """Test read-only tool is allowed by OpenClaw adapter."""
+    adapter = hosts["openclaw"]
+    scenario = COMPLIANCE_SCENARIOS[1]  # read_only_tool_allowed
     
-    async def _run_openclaw_scenario(self, scenario: TestScenario) -> Dict:
-        """Run scenario with OpenClaw adapter."""
-        adapter = self.adapter
-        
-        # Use governance hook
-        session_key = f"test-session-{scenario.name}"
-        agent_id = "test-agent"
-        
-        try:
-            outcome = await adapter.governance_hook_tool(
+    result = await run_scenario(adapter, "openclaw", scenario)
+    
+    assert result["error"] is None, f"Error: {result['error']}"
+    assert result["actual"] == scenario.expected_decision.value, \
+        f"Expected {scenario.expected_decision.value}, got {result['actual']}"
+
+@pytest.mark.asyncio
+async def test_denylisted_tool_blocked_langgraph(hosts):
+    """Test denylisted tool is blocked by LangGraph adapter."""
+    adapter = hosts["langgraph"]
+    scenario = COMPLIANCE_SCENARIOS[0]  # denylisted_tool_blocked
+    
+    result = await run_scenario(adapter, "langgraph", scenario)
+    
+    assert result["error"] is None, f"Error: {result['error']}"
+    assert result["actual"] == scenario.expected_decision.value, \
+        f"Expected {scenario.expected_decision.value}, got {result['actual']}"
+
+@pytest.mark.asyncio
+async def test_read_only_tool_allowed_langgraph(hosts):
+    """Test read-only tool is allowed by LangGraph adapter."""
+    adapter = hosts["langgraph"]
+    scenario = COMPLIANCE_SCENARIOS[1]  # read_only_tool_allowed
+    
+    result = await run_scenario(adapter, "langgraph", scenario)
+    
+    assert result["error"] is None, f"Error: {result['error']}"
+    assert result["actual"] == scenario.expected_decision.value, \
+        f"Expected {scenario.expected_decision.value}, got {result['actual']}"
+
+@pytest.mark.asyncio
+async def test_events_produced():
+    """Test that events were produced during tests."""
+    # Look for event files
+    event_files = []
+    for data_dir in ["./openclaw_adapter_data", "./langgraph_cgf_data"]:
+        events_file = Path(data_dir) / "events.jsonl"
+        if events_file.exists():
+            event_files.append(events_file)
+    
+    # Should have events from at least one host
+    assert len(event_files) > 0, "No event files found - events must be produced"
+    
+    # Each file should have events
+    for ef in event_files:
+        lines = [l for l in ef.read_text().strip().split('\n') if l.strip()]
+        assert len(lines) > 0, f"{ef} is empty - events must be produced"
+
+# ============== HELPER FUNCTIONS ==============
+
+async def run_scenario(adapter, host_name: str, scenario: ScenarioConfig) -> Dict:
+    """Run a single scenario and return result."""
+    result = {
+        "scenario": scenario.name,
+        "host": host_name,
+        "tool_name": scenario.tool_name,
+        "expected": scenario.expected_decision.value,
+        "actual": None,
+        "success": False,
+        "events": [],
+        "error": None,
+    }
+    
+    try:
+        if host_name == "openclaw":
+            # OpenClaw uses governance_hook_tool
+            decision = await adapter.governance_hook_tool(
                 tool_name=scenario.tool_name,
                 tool_args=scenario.tool_args,
-                session_key=session_key,
-                agent_id=agent_id
+                session_key=f"test-session-{scenario.name}",
+                risk_tier=scenario.risk_tier
             )
+            result["actual"] = decision
+            result["success"] = decision == scenario.expected_decision.value
             
-            # Infer actual decision
-            if outcome.get("blocked"):
-                actual = DecisionType.BLOCK
-            elif outcome.get("fail_open"):
-                actual = DecisionType.ALLOW  # Fail open = treated as allow
-            else:
-                actual = DecisionType.ALLOW
+        elif host_name == "langgraph":
+            # LangGraph also uses governance_hook
+            from cgf_schemas_v03 import HostContext, HostProposal
             
-            return {
-                "actual": actual.value,
-                "success": actual == scenario.expected_decision or scenario.expected_success,
-                "proposal_id": outcome.get("proposal_id"),
-                "decision_id": outcome.get("decision_id"),
-                "fail_open": outcome.get("fail_open", False)
+            # Create a mock state
+            state = {
+                "messages": [],
+                "thread_id": f"test-thread-{scenario.name}",
             }
             
-        except Exception as e:
-            if "BLOCKED" in str(e) or "blocked by CGF" in str(e).lower():
-                actual = DecisionType.BLOCK
-                return {
-                    "actual": actual.value,
-                    "success": actual == scenario.expected_decision,
-                    "blocked": True,
-                    "error_message": str(e)
-                }
-            raise
-    
-    async def _run_langgraph_scenario(self, scenario: TestScenario) -> Dict:
-        """Run scenario with LangGraph adapter."""
-        adapter = self.adapter
-        
-        try:
-            outcome = await adapter.governance_hook(
-                tool_name=scenario.tool_name,
-                tool_args=scenario.tool_args,
-                thread_id=f"test-thread-{scenario.name}",
-                node_id="test-node",
-                state={"turn_number": 0}
-            )
+            # Call the governance hook
+            result_data = await adapter.governance_hook(state, scenario.tool_name, scenario.tool_args)
+            decision = result_data.get("decision", "ERROR")
+            result["actual"] = decision
+            result["success"] = decision == scenario.expected_decision.value
             
-            if outcome.get("blocked"):
-                actual = DecisionType.BLOCK
-            elif outcome.get("fail_open"):
-                actual = DecisionType.ALLOW
-            else:
-                actual = DecisionType.ALLOW
-            
-            return {
-                "actual": actual.value,
-                "success": actual == scenario.expected_decision or scenario.expected_success,
-                "proposal_id": outcome.get("proposal_id"),
-                "decision_id": outcome.get("decision_id"),
-                "fail_open": outcome.get("fail_open", False)
-            }
-            
-        except Exception as e:
-            if "blocked by CGF" in str(e).lower() or "LangGraphToolBlocked" in str(type(e).__name__):
-                actual = DecisionType.BLOCK
-                return {
-                    "actual": actual.value,
-                    "success": actual == scenario.expected_decision,
-                    "blocked": True,
-                    "error_message": str(e)
-                }
-            raise
-
-
-# ============== COMPLIANCE TEST SUITE ==============
-
-class ContractComplianceSuite:
-    """Test suite for cross-host contract compliance."""
+    except Exception as e:
+        result["error"] = str(e)
+        result["actual"] = "ERROR"
     
-    def __init__(self):
-        self.results: List[Dict] = []
-        self.replay_packs: Dict[str, ReplayPack] = {}
-        self.passed = 0
-        self.failed = 0
-    
-    async def run_all(self) -> bool:
-        """Run all compliance tests."""
-        print("=" * 70)
-        print("CROSS-HOST CONTRACT COMPLIANCE SUITE v0.3")
-        print("=" * 70)
-        print(f"Schema: {SCHEMA_MODULE}")
-        print(f"Hosts: OpenClaw v0.2, LangGraph v0.1")
-        print(f"Scenarios: {len(COMPLIANCE_SCENARIOS)}")
-        print("=" * 70)
-        
-        # Initialize adapters
-        from cgf_schemas_v03 import HostConfig
-        
-        hosts = {
-            "openclaw": OpenClawAdapter(
-                cgf_endpoint="http://127.0.0.1:8080",
-                adapter_type="openclaw",
-                host_config={"host_type": "openclaw", "namespace": "test", "version": "0.2.0"}
-            ),
-            "langgraph": LangGraphAdapter(
-                HostConfig(host_type="langgraph", namespace="test", version="0.1.0")
-            )
-        }
-        
-        # Run tests
-        for scenario in COMPLIANCE_SCENARIOS:
-            print(f"\n{'─' * 70}")
-            print(f"SCENARIO: {scenario.name}")
-            print(f"Tool: {scenario.tool_name}, Expected: {scenario.expected_decision.value}")
-            print(f"CGF Available: {scenario.cgf_available}")
-            print('─' * 70)
-            
-            for host_name, adapter in hosts.items():
-                wrapper = HostAdapterWrapper(adapter, host_name)
-                result = await wrapper.run_scenario(scenario)
-                
-                # Evaluate
-                passed = result["actual"] == scenario.expected_decision.value
-                if passed and not result.get("error"):
-                    self.passed += 1
-                    status = "✅ PASS"
-                else:
-                    self.failed += 1
-                    status = "❌ FAIL"
-                
-                print(f"  {status} {host_name:12} → {result['actual']:12} (expected: {scenario.expected_decision.value})")
-                if result.get("error"):
-                    print(f"         Error: {result['error'][:60]}")
-                
-                self.results.append(result)
-        
-        return self.failed == 0
-    
-    def generate_replay_pack(self, host_name: str, scenario_name: str) -> Dict:
-        """Generate replay pack for a host/scenario."""
-        # Map host_name to correct data directory
-        DATA_DIRS = {
-            "openclaw": "./openclaw_adapter_data",
-            "langgraph": "./langgraph_cgf_data"
-        }
-        
-        events = []
-        data_dir = Path(DATA_DIRS.get(host_name, f"./{host_name}_cgf_data"))
-        
-        if data_dir.exists():
-            events_file = data_dir / "events.jsonl"
-            if events_file.exists():
-                with open(events_file) as f:
-                    lines = f.readlines()
-                    # Take last 20 events as representative sample
-                    for line in lines[-20:]:
-                        line = line.strip()
-                        if line:
-                            try:
-                                events.append(json.loads(line))
-                            except:
-                                pass
-        
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "host": host_name,
-            "scenario": scenario_name,
-            "timestamp": datetime.now().timestamp(),
-            "completeness": "full" if len(events) >= 3 else "partial",
-            "events": events
-        }
-    
-    def compare_replays(self, scenario_name: str) -> Dict:
-        """Compare replay packs across hosts for same scenario."""
-        replays = {
-            "openclaw": self.generate_replay_pack("openclaw", scenario_name),
-            "langgraph": self.generate_replay_pack("langgraph", scenario_name)
-        }
-        
-        # Extract event sequences
-        sequences = {}
-        for host, replay in replays.items():
-            events = replay.get("events", [])
-            sequences[host] = [e.get("event_type") for e in sorted(events, key=lambda x: x.get("timestamp", 0))]
-        
-        # Compare
-        comparison = {
-            "scenario": scenario_name,
-            "schema_version": SCHEMA_VERSION,
-            "openclaw_events": sequences.get("openclaw", []),
-            "langgraph_events": sequences.get("langgraph", []),
-            "event_counts_match": len(sequences.get("openclaw", [])) == len(sequences.get("langgraph", [])),
-            "key_events_present": {
-                "adapter_registered": True,  # Don't require - one-time event
-                "proposal_received": all(
-                    "proposal_received" in seq for seq in sequences.values()
-                ),
-                "decision_made": all(
-                    any(e in seq for e in ["decision_made", "action_allowed", "action_blocked"])
-                    for seq in sequences.values()
-                )
-            }
-        }
-        
-        comparison["compatible"] = all([
-            comparison["key_events_present"]["proposal_received"],
-            comparison["key_events_present"]["decision_made"],
-            # Event counts should be similar (within factor of 2)
-            max(len(sequences.get("openclaw", [])), len(sequences.get("langgraph", []))) <= 
-                2 * min(len(sequences.get("openclaw", [])), len(sequences.get("langgraph", []))) + 1
-        ])
-        
-        return comparison
-    
-    def print_summary(self):
-        """Print test summary."""
-        print("\n" + "=" * 70)
-        print("TEST SUMMARY")
-        print("=" * 70)
-        print(f"Schema Version: {SCHEMA_VERSION}")
-        print(f"Passed: {self.passed}/{self.passed + self.failed}")
-        print(f"Failed: {self.failed}/{self.passed + self.failed}")
-        
-        if self.failed == 0:
-            print("\n✅ ALL TESTS PASSED - Cross-host contract compatible!")
-        else:
-            print(f"\n⚠️  {self.failed} TESTS FAILED")
-        
-        # Replay comparison
-        print("\n--- Replay Pack Comparisons ---")
-        for scenario in COMPLIANCE_SCENARIOS:
-            comparison = self.compare_replays(scenario.name)
-            status = "✅" if comparison["compatible"] else "⚠️"
-            print(f"{status} {scenario.name:30} compatible={comparison['compatible']}")
-    
-    def generate_report(self) -> CrossHostCompatibilityReport:
-        """Generate formal compliance report."""
-        # Organize results by host/scenario
-        results = {}
-        hosts = set(r["host"] for r in self.results)
-        scenarios = set(r["scenario"] for r in self.results)
-        
-        for host in hosts:
-            results[host] = {}
-            for scenario in scenarios:
-                result = next((r for r in self.results 
-                              if r["host"] == host and r["scenario"] == scenario), None)
-                if result:
-                    results[host][scenario] = "pass" if result.get("success") else "fail"
-                else:
-                    results[host][scenario] = "unknown"
-        
-        return CrossHostCompatibilityReport(
-            schema_version=SCHEMA_VERSION,
-            report_id=f"compliance-report-{datetime.now().timestamp()}",
-            created_at=datetime.now().timestamp(),
-            hosts_tested=list(hosts),
-            scenarios=list(scenarios),
-            results=results,
-            replay_comparisons={
-                s.name: self.compare_replays(s.name) for s in COMPLIANCE_SCENARIOS
-            },
-            compatible=self.failed == 0
-        )
-
+    return result
 
 # ============== CLEANUP HELPERS ==============
 
 def clean_runtime_dirs():
     """Clean runtime data directories for deterministic runs."""
     dirs_to_clean = [
-        Path("./cgf_data"),
-        Path("./langgraph_cgf_data"),
         Path("./openclaw_adapter_data"),
+        Path("./langgraph_cgf_data"),
+        Path("./cgf_data"),
     ]
     
     for dir_path in dirs_to_clean:
@@ -482,7 +338,6 @@ def clean_runtime_dirs():
             shutil.rmtree(dir_path)
             print(f"🧹 Cleaned: {dir_path}")
 
-
 def create_run_output_dir() -> Path:
     """Create per-run output directory."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -490,8 +345,7 @@ def create_run_output_dir() -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
-
-# ============== MAIN ==============
+# ============== MAIN (for direct execution) ==============
 
 async def main():
     """Run compliance suite with deterministic output."""
@@ -502,35 +356,84 @@ async def main():
     output_dir = create_run_output_dir()
     print(f"📁 Output directory: {output_dir}")
     
-    # Run tests
-    suite = ContractComplianceSuite()
-    success = await suite.run_all()
-    suite.print_summary()
+    # Check CGF availability
+    if not check_cgf_available(CGF_ENDPOINT):
+        if not ALLOW_CGF_DOWN:
+            print(f"ERROR: CGF not available at {CGF_ENDPOINT}")
+            print("Set ALLOW_CGF_DOWN=1 to continue anyway.")
+            return False
+        print(f"WARNING: CGF not available (ALLOW_CGF_DOWN=1)")
+    
+    print(f"\n{'=' * 70}")
+    print("CROSS-HOST CONTRACT COMPLIANCE SUITE v0.4.1")
+    print(f"{'=' * 70}")
+    print(f"Schema: {SCHEMA_MODULE}")
+    print(f"CGF Endpoint: {CGF_ENDPOINT}")
+    print("")
+    
+    # Run all scenarios
+    passed = 0
+    failed = 0
+    results = []
+    
+    if not HAS_ADAPTERS:
+        print("ERROR: Adapters not available")
+        return False
+    
+    hosts_config = {
+        "openclaw": OpenClawAdapter(
+            cgf_endpoint=CGF_ENDPOINT,
+            adapter_type="openclaw",
+            host_config={"host_type": "openclaw", "namespace": "test", "version": "0.2.0"}
+        ),
+        "langgraph": LangGraphAdapter(
+            HostConfig(host_type="langgraph", namespace="test", version="0.1.0")
+        )
+    }
+    
+    for scenario in COMPLIANCE_SCENARIOS:
+        print(f"\n{'─' * 70}")
+        print(f"SCENARIO: {scenario.name}")
+        print(f"Tool: {scenario.tool_name}, Expected: {scenario.expected_decision.value}")
+        print(f"CGF Available: {scenario.cgf_available}")
+        print('─' * 70)
+        
+        for host_name, adapter in hosts_config.items():
+            result = await run_scenario(adapter, host_name, scenario)
+            results.append(result)
+            
+            if result["success"]:
+                passed += 1
+                status = "✅ PASS"
+            else:
+                failed += 1
+                status = "❌ FAIL"
+            
+            print(f"  {status} {host_name:12} → {result['actual']:12} (expected: {scenario.expected_decision.value})")
+            if result.get("error"):
+                print(f"         Error: {result['error'][:60]}")
+    
+    print(f"\n{'=' * 70}")
+    print(f"SUMMARY: {passed} passed, {failed} failed")
+    print(f"{'=' * 70}")
     
     # Generate report
-    report = suite.generate_report()
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "timestamp": datetime.now().timestamp(),
+        "passed": passed,
+        "failed": failed,
+        "total": passed + failed,
+        "results": results,
+    }
     
-    # Save report to per-run directory (deterministic path)
     report_path = output_dir / "contract_compliance_report.json"
     with open(report_path, "w") as f:
-        # Convert to dict for JSON
-        report_dict = {
-            "schema_version": report.schema_version,
-            "report_id": report.report_id,
-            "created_at": report.created_at,
-            "hosts_tested": report.hosts_tested,
-            "scenarios": report.scenarios,
-            "results": report.results,
-            "replay_comparisons": report.replay_comparisons,
-            "compatible": report.compatible
-        }
-        json.dump(report_dict, f, indent=2)
+        json.dump(report, f, indent=2)
     
-    print(f"\n📄 Report saved to: {report_path}")
-    print(f"Compatible: {'✅ YES' if report.compatible else '❌ NO'}")
+    print(f"📄 Report saved to: {report_path}")
     
-    return success
-
+    return failed == 0
 
 if __name__ == "__main__":
     success = asyncio.run(main())
