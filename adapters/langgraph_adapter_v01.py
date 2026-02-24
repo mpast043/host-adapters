@@ -681,6 +681,20 @@ class LangGraphAdapter(HostAdapter):
                 log_event("warn", "CGF unreachable - fail open", {"risk": risk_tier, "fail_mode": fail_mode})
                 return {"allowed": True, "reason": f"CGF unreachable - fail open ({fail_mode})", "fail_open": True}
         
+        # Emit DECISION_MADE event before enforcement
+        self.emit_event(
+            HostEventType.DECISION_MADE,
+            {
+                "decision_id": decision.decision_id,
+                "proposal_id": decision.proposal_id,
+                "decision_type": decision.decision.value,
+                "confidence": decision.confidence,
+                "justification": decision.justification,
+            },
+            proposal_id=proposal.proposal_id,
+            decision_id=decision.decision_id
+        )
+        
         # Enforce decision
         duration_ms = (datetime.now().timestamp() - start_time) * 1000
         

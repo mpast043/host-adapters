@@ -247,7 +247,7 @@ class OpenClawAdapter:
     
     async def register(self) -> str:
         """Register adapter with CGF server."""
-        if self.session is None:
+        if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
         
         payload = {
@@ -255,7 +255,7 @@ class OpenClawAdapter:
             "adapter_type": self.adapter_type,
             "host_config": self.host_config,
             "features": ["tool_call", "memory_write"],
-            "risk_tiers": {k: v.value for k, v in self.risk_tiers.items()},
+            "risk_tiers": {k: v.value for k, v in self._default_risk_tiers.items()},
             "timestamp": datetime.now().timestamp()
         }
         
@@ -297,6 +297,10 @@ class OpenClawAdapter:
         """Send proposal to CGF for evaluation."""
         if not self.adapter_id:
             await self.register()
+        
+        # Ensure session is open
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
         
         payload = {
             "schema_version": SCHEMA_VERSION,

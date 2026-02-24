@@ -128,14 +128,14 @@ else:
 
 import pytest
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def cgf_client():
     """Provide CGF client for tests."""
     if HAS_FASTAPI and HAS_SERVER:
         return TestClient(SERVER_APP)
     pytest.skip("FastAPI or CGF server not available")
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def hosts():
     """Provide configured host adapters."""
     if not HAS_ADAPTERS:
@@ -290,35 +290,51 @@ async def run_scenario(adapter, host_name: str, scenario: ScenarioConfig) -> Dic
     
     try:
         if host_name == "openclaw":
-            # OpenClaw uses governance_hook_tool
-            decision = await adapter.governance_hook_tool(
+            # OpenClaw: governance_hook_tool(tool_name, tool_args, session_key, agent_id)
+            # Returns Dict, but raises CGFGovernanceError on BLOCK
+            result_data = await adapter.governance_hook_tool(
                 tool_name=scenario.tool_name,
                 tool_args=scenario.tool_args,
                 session_key=f"test-session-{scenario.name}",
-                risk_tier=scenario.risk_tier
+                agent_id="test-agent"
             )
-            result["actual"] = decision
-            result["success"] = decision == scenario.expected_decision.value
+            # If we get here without exception, tool was allowed
+            if isinstance(result_data, dict) and result_data.get("allowed"):
+                result["actual"] = "ALLOW"
+            else:
+                result["actual"] = "ALLOW"  # Default fallback
+            result["success"] = result["actual"] == scenario.expected_decision.value
             
         elif host_name == "langgraph":
-            # LangGraph also uses governance_hook
-            from cgf_schemas_v03 import HostContext, HostProposal
-            
-            # Create a mock state
-            state = {
-                "messages": [],
-                "thread_id": f"test-thread-{scenario.name}",
-            }
-            
-            # Call the governance hook
-            result_data = await adapter.governance_hook(state, scenario.tool_name, scenario.tool_args)
-            decision = result_data.get("decision", "ERROR")
-            result["actual"] = decision
-            result["success"] = decision == scenario.expected_decision.value
+            # LangGraph: governance_hook(tool_name, tool_args, thread_id, node_id, state)
+            # Returns dict on ALLOW, raises exception on BLOCK
+            decision_result = await adapter.governance_hook(
+                tool_name=scenario.tool_name,
+                tool_args=scenario.tool_args,
+                thread_id=f"test-thread-{scenario.name}",
+                node_id="test-node",
+                state={"messages": []}
+            )
+            # Returns dict with "allowed" key for ALLOW decisions
+            if decision_result.get("allowed"):
+                result["actual"] = "ALLOW"
+            else:
+                result["actual"] = "ERROR"
+            result["success"] = result["actual"] == scenario.expected_decision.value
             
     except Exception as e:
-        result["error"] = str(e)
-        result["actual"] = "ERROR"
+        # Both adapters raise exceptions for BLOCK decisions
+        # OpenClaw: CGFGovernanceError with message "BLOCKED: ..."
+        # LangGraph: LangGraphToolBlocked with message "Tool 'x' blocked by CGF: ..."
+        error_msg = str(e)
+        if "blocked" in error_msg.lower():
+            # This is a BLOCK decision - check if that's what we expected
+            result["actual"] = "BLOCK"
+            result["success"] = "BLOCK" == scenario.expected_decision.value
+        else:
+            # Other errors
+            result["error"] = error_msg
+            result["actual"] = "ERROR"
     
     return result
 

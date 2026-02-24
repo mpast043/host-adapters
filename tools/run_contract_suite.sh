@@ -176,8 +176,22 @@ fi
 echo ""
 
 # Find latest run directory
+# Check for event files in adapter data directories as fallback
 echo "[4/5] Locating test output directory..."
-LATEST_RUN=$(ls -td "${REPO_ROOT}/outputs/run_"* 2>/dev/null | head -1 || true)
+LATEST_RUN=""
+
+# First check for outputs/run_* directories
+if ls -td "${REPO_ROOT}/outputs/run_"* >/dev/null 2>&1; then
+    LATEST_RUN=$(ls -td "${REPO_ROOT}/outputs/run_"* 2>/dev/null | head -1)
+fi
+
+# Fallback: check adapter data directories for events
+if [ -z "${LATEST_RUN}" ]; then
+    if [ -f "${REPO_ROOT}/openclaw_adapter_data/events.jsonl" ] || [ -f "${REPO_ROOT}/langgraph_cgf_data/events.jsonl" ]; then
+        echo -e "${GREEN}✓ Found adapter event files${NC}"
+        LATEST_RUN="${REPO_ROOT}"
+    fi
+fi
 
 if [ -z "${LATEST_RUN}" ]; then
     echo -e "${YELLOW}⚠ No outputs/run_* directory found${NC}"
@@ -188,60 +202,81 @@ else
 fi
 echo ""
 
-# Run schema lint
+# Run schema lint on event directories
 echo "[5/5] Running schema lint (strict mode)..."
-if [ -d "${LATEST_RUN}" ]; then
-    LINT_OUTPUT=$(mktemp)
-    set +e
-    python3 "${REPO_ROOT}/tools/schema_lint.py" --dir "${LATEST_RUN}" --strict > "$LINT_OUTPUT" 2>&1
-    LINT_EXIT=$?
-    set -e
-    
-    cat "$LINT_OUTPUT"
-    echo ""
-    
-    # Parse event counts
-    FILES_CHECKED=0
-    EVENTS_VALID=0
-    
-    if grep -q "Files checked:" "$LINT_OUTPUT" 2>/dev/null; then
-        FILES_CHECKED=$(grep "Files checked:" "$LINT_OUTPUT" | grep -oE "[0-9]+")
-    fi
-    if grep -q "Events valid:" "$LINT_OUTPUT" 2>/dev/null; then
-        EVENTS_VALID=$(grep "Events valid:" "$LINT_OUTPUT" | grep -oE "[0-9]+")
-    fi
-    
-    FILES_CHECKED=${FILES_CHECKED:-0}
-    EVENTS_VALID=${EVENTS_VALID:-0}
-    
-    rm "$LINT_OUTPUT"
-    
-    # In strict mode, fail on 0 events (unless --allow-empty-events)
-    if [ "$EVENTS_VALID" -eq 0 ] && [ "$ALLOW_EMPTY_EVENTS" -eq 0 ]; then
-        echo -e "${RED}ERROR: 0 events validated. Contract gate cannot pass without events.${NC}"
-        echo "       Use --allow-empty-events to permit local smoke runs."
-        exit 3
-    fi
-    
-    # Check for actual errors in lint output
-    if [ $LINT_EXIT -ne 0 ]; then
-        if grep -q "Errors: 0" <<< "$(cat /dev/stdin 2>/dev/null || echo '')" 2>/dev/null; then
-            # No errors, only warnings
-            echo -e "${GREEN}✓ Schema lint passed (warnings only)${NC}"
-        else
-            echo -e "${RED}✗ Schema lint failed with errors${NC}"
-            exit 1
+
+TOTAL_FILES_CHECKED=0
+TOTAL_EVENTS_VALID=0
+TOTAL_EVENTS_INVALID=0
+TOTAL_ERRORS=0
+TOTAL_WARNINGS=0
+
+# Run schema lint on each adapter data directory
+for dir in "${REPO_ROOT}/openclaw_adapter_data" "${REPO_ROOT}/langgraph_cgf_data"; do
+    if [ -d "$dir" ]; then
+        LINT_OUTPUT=$(mktemp)
+        set +e
+        python3 "${REPO_ROOT}/tools/schema_lint.py" --dir "$dir" --strict > "$LINT_OUTPUT" 2>&1
+        set -e
+        
+        # Parse event counts from this directory
+        if grep -q "Files checked:" "$LINT_OUTPUT" 2>/dev/null; then
+            files=$(grep "Files checked:" "$LINT_OUTPUT" | grep -oE "[0-9]+" || echo "0")
+            TOTAL_FILES_CHECKED=$((TOTAL_FILES_CHECKED + files))
         fi
-    else
-        echo -e "${GREEN}✓ Schema lint passed (${FILES_CHECKED} files, ${EVENTS_VALID} events)${NC}"
+        if grep -q "Events valid:" "$LINT_OUTPUT" 2>/dev/null; then
+            events=$(grep "Events valid:" "$LINT_OUTPUT" | grep -oE "[0-9]+" || echo "0")
+            TOTAL_EVENTS_VALID=$((TOTAL_EVENTS_VALID + events))
+        fi
+        if grep -q "Events invalid:" "$LINT_OUTPUT" 2>/dev/null; then
+            invalid=$(grep "Events invalid:" "$LINT_OUTPUT" | grep -oE "[0-9]+" || echo "0")
+            TOTAL_EVENTS_INVALID=$((TOTAL_EVENTS_INVALID + invalid))
+        fi
+        if grep -q "Errors:" "$LINT_OUTPUT" 2>/dev/null; then
+            errors=$(grep "Errors:" "$LINT_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
+            TOTAL_ERRORS=$((TOTAL_ERRORS + errors))
+        fi
+        if grep -q "Warnings:" "$LINT_OUTPUT" 2>/dev/null; then
+            warnings=$(grep "Warnings:" "$LINT_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + warnings))
+        fi
+        
+        rm "$LINT_OUTPUT"
     fi
-else
-    if [ "$ALLOW_EMPTY_EVENTS" -eq 1 ]; then
-        echo -e "${YELLOW}⚠ Skipping schema lint (no output directory) --allow-empty-events${NC}"
-    else
-        echo -e "${RED}ERROR: No output directory found. Contract gate cannot pass without events.${NC}"
-        exit 3
-    fi
+done
+
+# Display aggregated results
+echo ""
+echo "============================================================"
+echo "SCHEMA LINT SUMMARY (Aggregated)"
+echo "============================================================"
+echo "Files checked: ${TOTAL_FILES_CHECKED}"
+echo "Events valid: ${TOTAL_EVENTS_VALID}"
+echo "Events invalid: ${TOTAL_EVENTS_INVALID}"
+echo "Errors: ${TOTAL_ERRORS}"
+echo "Warnings: ${TOTAL_WARNINGS}"
+echo "============================================================"
+echo ""
+
+# In strict mode, fail on 0 events (unless --allow-empty-events)
+if [ "$TOTAL_EVENTS_VALID" -eq 0 ] && [ "$ALLOW_EMPTY_EVENTS" -eq 0 ]; then
+    echo -e "${RED}ERROR: 0 events validated. Contract gate cannot pass without events.${NC}"
+    echo "       Use --allow-empty-events to permit local smoke runs."
+    exit 3
+fi
+
+# Check for errors
+if [ $TOTAL_ERRORS -gt 0 ]; then
+    echo -e "${RED}✗ Schema lint failed with ${TOTAL_ERRORS} errors${NC}"
+    exit 1
+fi
+
+if [ $TOTAL_EVENTS_VALID -gt 0 ]; then
+    echo -e "${GREEN}✓ Schema lint passed (${TOTAL_FILES_CHECKED} files, ${TOTAL_EVENTS_VALID} events)${NC}"
+fi
+
+if [ $TOTAL_WARNINGS -gt 0 ]; then
+    echo -e "${YELLOW}⚠ Schema lint has ${TOTAL_WARNINGS} warnings${NC}"
 fi
 echo ""
 
@@ -255,5 +290,5 @@ echo "  - Runtime directories cleaned"
 echo "  - CGF server started and stopped"
 echo "  - Contract compliance tests: ${TESTS_PASSED} PASSED"
 echo "  - Output directory: ${LATEST_RUN}"
-echo "  - Schema lint: ${EVENTS_VALID} events validated"
+echo "  - Schema lint: ${TOTAL_EVENTS_VALID} events validated"
 echo ""

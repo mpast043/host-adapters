@@ -66,11 +66,9 @@ EVENT_ORDERING_RULES = {
     HostEventType.ACTION_DEFERRED: [HostEventType.DECISION_MADE],
     HostEventType.ACTION_AUDITED: [HostEventType.DECISION_MADE],
     
-    # Outcome - requires enforcement
+    # Outcome - requires at least one enforcement action (check individually)
     HostEventType.OUTCOME_LOGGED: [
-        HostEventType.ACTION_ALLOWED,
-        HostEventType.ACTION_BLOCKED,
-        HostEventType.ACTION_CONSTRAINED
+        HostEventType.ACTION_ALLOWED
     ],
     
     # Side effects - requires outcome
