@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.3.0",
+  "replay_id": "replay-test-001",
+  "created_at": 1708819200.0,
+  "completeness": "full",
+  "proposal": {
+    "proposal_id": "prop-test-001",
+    "adapter_id": "adp-test-001",
+    "action_type": "tool_call",
+    "action_params": {
+      "tool_name": "ls",
+      "args": {}
+    },
+    "risk_tier": "low",
+    "proposed_at": 1708819100.0
+  },
+  "decision": {
+    "decision_id": "dec-test-001",
+    "proposal_id": "prop-test-001",
+    "decision": "ALLOW",
+    "confidence": 0.95,
+    "justification": "Low risk tool call",
+    "reason_code": "LOW_RISK"
+  },
+  "outcome": {
+    "outcome_id": "out-test-001",
+    "proposal_id": "prop-test-001",
+    "decision_id": "dec-test-001",
+    "adapter_id": "adp-test-001",
+    "success": true,
+    "duration_ms": 15.0,
+    "committed": true,
+    "quarantined": false,
+    "observed_at": 1708819200.0
+  },
+  "events": [
+    {
+      "event_id": "evt-001",
+      "event_type": "proposal_received",
+      "timestamp": 1708819100.0,
+      "proposal_id": "prop-test-001",
+      "decision_id": null,
+      "data": {
+        "action_type": "tool_call"
+      }
+    },
+    {
+      "event_id": "evt-002",
+      "event_type": "decision_made",
+      "timestamp": 1708819150.0,
+      "proposal_id": "prop-test-001",
+      "decision_id": "dec-test-001",
+      "data": {
+        "decision": "ALLOW",
+        "confidence": 0.95
+      }
+    },
+    {
+      "event_id": "evt-003",
+      "event_type": "action_allowed",
+      "timestamp": 1708819200.0,
+      "proposal_id": "prop-test-001",
+      "decision_id": "dec-test-001",
+      "data": {
+        "executed": true
+      }
+    }
+  ]
+}

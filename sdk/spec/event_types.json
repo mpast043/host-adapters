@@ -1,0 +1,183 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Canonical EventTypes for HostAdapter v1. All 19 event types with required fields.",
+  "event_types": [
+    {
+      "name": "adapter_registered",
+      "category": "lifecycle",
+      "description": "Adapter registered with CGF",
+      "required_fields": ["event_id", "event_type", "timestamp", "adapter_id", "host_type", "registered_at"],
+      "optional_fields": ["capabilities", "version"],
+      "preceded_by": [],
+      "followed_by": ["proposal_received", "adapter_disconnected"]
+    },
+    {
+      "name": "adapter_disconnected",
+      "category": "lifecycle",
+      "description": "Adapter heartbeat timeout or disconnect",
+      "required_fields": ["event_id", "event_type", "timestamp", "adapter_id", "disconnected_at", "reason"],
+      "optional_fields": ["last_heartbeat"],
+      "preceded_by": ["adapter_registered"],
+      "followed_by": []
+    },
+    {
+      "name": "proposal_received",
+      "category": "proposal",
+      "description": "Proposal submitted to CGF",
+      "required_fields": ["event_id", "event_type", "timestamp", "proposal_id", "adapter_id", "action_type", "proposed_at"],
+      "optional_fields": ["action_params", "context"],
+      "preceded_by": ["adapter_registered"],
+      "followed_by": ["decision_made", "proposal_expired", "proposal_revoked"]
+    },
+    {
+      "name": "proposal_enacted",
+      "category": "proposal",
+      "description": "Proposal executed successfully",
+      "required_fields": ["event_id", "event_type", "timestamp", "proposal_id", "enacted_at"],
+      "optional_fields": ["outcome_id"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": ["outcome_logged"]
+    },
+    {
+      "name": "proposal_expired",
+      "category": "proposal",
+      "description": "Proposal TTL exceeded",
+      "required_fields": ["event_id", "event_type", "timestamp", "proposal_id", "expired_at"],
+      "optional_fields": ["ttl_seconds"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": []
+    },
+    {
+      "name": "proposal_revoked",
+      "category": "proposal",
+      "description": "Proposal cancelled by host",
+      "required_fields": ["event_id", "event_type", "timestamp", "proposal_id", "revoked_at", "reason"],
+      "optional_fields": [],
+      "preceded_by": ["proposal_received"],
+      "followed_by": []
+    },
+    {
+      "name": "decision_made",
+      "category": "decision",
+      "description": "CGF issued decision for proposal",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "decision", "decided_at"],
+      "optional_fields": ["confidence", "justification", "reason_code", "constraint"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": ["action_allowed", "action_blocked", "action_constrained", "action_deferred", "action_audited"]
+    },
+    {
+      "name": "decision_rejected",
+      "category": "decision",
+      "description": "Proposal malformed or rejected by CGF",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "rejected_at", "reason"],
+      "optional_fields": ["validation_errors"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": []
+    },
+    {
+      "name": "action_allowed",
+      "category": "enforcement",
+      "description": "Action executed per ALLOW decision",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "executed_at"],
+      "optional_fields": ["side_effects"],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["outcome_logged"]
+    },
+    {
+      "name": "action_blocked",
+      "category": "enforcement",
+      "description": "Action blocked per BLOCK decision",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "blocked_at", "reason"],
+      "optional_fields": [],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["outcome_logged"]
+    },
+    {
+      "name": "action_constrained",
+      "category": "enforcement",
+      "description": "Action executed with constraints per CONSTRAIN",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "executed_at", "constraint_type"],
+      "optional_fields": ["constraint_params"],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["outcome_logged"]
+    },
+    {
+      "name": "action_deferred",
+      "category": "enforcement",
+      "description": "Action queued per DEFER decision",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "deferred_at", "queue_position"],
+      "optional_fields": ["estimated_wait_ms"],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["action_allowed"]
+    },
+    {
+      "name": "action_audited",
+      "category": "enforcement",
+      "description": "Action executed per AUDIT decision",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "proposal_id", "executed_at"],
+      "optional_fields": ["audit_log_path"],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["outcome_logged"]
+    },
+    {
+      "name": "errors",
+      "category": "error",
+      "description": "Generic error during governance lifecycle",
+      "required_fields": ["event_id", "event_type", "timestamp", "error_type", "message"],
+      "optional_fields": ["proposal_id", "decision_id", "stacktrace"],
+      "preceded_by": [],
+      "followed_by": []
+    },
+    {
+      "name": "constraint_failed",
+      "category": "error",
+      "description": "Constraint application failed",
+      "required_fields": ["event_id", "event_type", "timestamp", "decision_id", "constraint_type", "failed_at", "error"],
+      "optional_fields": ["fallback_decision"],
+      "preceded_by": ["decision_made"],
+      "followed_by": ["action_blocked"]
+    },
+    {
+      "name": "cgf_unreachable",
+      "category": "error",
+      "description": "CGF connection failed, fail mode applied",
+      "required_fields": ["event_id", "event_type", "timestamp", "fail_mode", "risk_tier"],
+      "optional_fields": ["retry_count"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": []
+    },
+    {
+      "name": "evaluate_timeout",
+      "category": "error",
+      "description": "CGF evaluate call timed out",
+      "required_fields": ["event_id", "event_type", "timestamp", "proposal_id", "timeout_ms"],
+      "optional_fields": ["applied_fail_mode"],
+      "preceded_by": ["proposal_received"],
+      "followed_by": []
+    },
+    {
+      "name": "outcome_logged",
+      "category": "outcome",
+      "description": "Outcome committed to CGF",
+      "required_fields": ["event_id", "event_type", "timestamp", "outcome_id", "decision_id", "executed", "observed_at"],
+      "optional_fields": ["side_effects", "error_message"],
+      "preceded_by": ["action_allowed", "action_blocked", "action_constrained"],
+      "followed_by": ["side_effect_reported"]
+    },
+    {
+      "name": "side_effect_reported",
+      "category": "outcome",
+      "description": "Side effects confirmed after execution",
+      "required_fields": ["event_id", "event_type", "timestamp", "outcome_id", "reported_at", "effects"],
+      "optional_fields": [],
+      "preceded_by": ["outcome_logged"],
+      "followed_by": []
+    }
+  ],
+  "invariants": [
+    "Every proposal_received must have exactly one decision_made or decision_rejected",
+    "Every decision_made must have exactly one action_* event",
+    "Every action_* event (except action_deferred) must have one outcome_logged",
+    "Event timestamps must be monotonically non-decreasing within a proposal"
+  ]
+}
