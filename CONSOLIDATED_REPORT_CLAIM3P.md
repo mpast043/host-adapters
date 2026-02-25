@@ -11,16 +11,14 @@
 
 **Claim 3P**: As χ increases, MERA should approximate the ED ground state better (fidelity → 1) while entanglement converges to S_ref (plateau, not unbounded growth).
 
-### Test Results — Ising L=8
+### Test Results Summary
 
-| Criterion | Status | Detail |
-|-----------|--------|--------|
-| **P3.1** | ✓ PASS | Best fidelity nondecreasing in χ |
-| **P3.2** | ✓ PASS | Entropy error |S(χ) - S_ref| nonincreasing |
-| **P3.3** | ✓ PASS | Final fidelity ≥ 0.95, |S_error| ≤ 0.15 |
-| **P3.4** | ✗ FAIL | Saturating model does NOT beat log-linear |
+| Model | L | P3.1 | P3.2 | P3.3 | P3.4 | Verdict |
+|-------|---|------|------|------|------|---------|
+| **Ising** | 8 | ✓ | ✓ | ✓ | ✗ (ΔAIC=-16.77) | **REJECTED** |
+| **Heisenberg** | 8 | ✓ | ✓ | ✓ | ✗ (ΔAIC=-8.96) | **REJECTED** |
 
-**Final Verdict**: REJECTED (P3.4 failed)
+**Pattern**: Both models achieve perfect fidelity (1.0) and exact entropy match, but P3.4 model selection fails for small L=8 systems.
 
 ---
 
@@ -95,6 +93,37 @@ But **P3.4's strict criterion** (saturating must beat log-linear by ΔAIC ≥ 10
 
 ## Remaining Experiments
 
+### Test Results — Heisenberg L=8
+
+- **Model**: Heisenberg open chain (S=1/2)
+- **System**: L=8, partition A=4 (contiguous)
+- **ED Reference**: E_0 = -3.3749, S_ref = 0.4570 nats
+- **χ sweep**: [2, 3, 4, 6, 8, 12, 16], restarts=3, steps=150
+
+#### Per-χ Best Results
+
+| χ | Fidelity | Entropy | vs S_ref | Energy |
+|---|----------|---------|----------|--------|
+| 2 | 0.9882 | 0.4037 | -0.0533 | -3.3702 |
+| 3 | 0.9882 | 0.4037 | -0.0533 | -3.3702 |
+| 4 | 0.9813 | 0.4036 | -0.0534 | -3.3675 |
+| 6 | 0.9999 | 0.4560 | -0.0010 | -3.3747 |
+| 8 | 0.9999 | 0.4560 | -0.0010 | -3.3747 |
+| 12 | 1.0000 | 0.4570 | 0.0000 | -3.3749 |
+| **16** | **1.0000** | **0.4570** | **0.0000** | **-3.3749** |
+
+#### Key Differences from Ising:
+- Heisenberg has **higher entanglement** (S_ref = 0.46 vs 0.36 for Ising)
+- Achieves perfect fidelity at **lower χ** (χ=12 vs χ=16 for Ising)
+- Model selection gap is **smaller** (ΔAIC = -8.96 vs -16.77), suggesting clearer saturation
+
+### Next: L=16 Tests
+
+| Model | Size | Status | Estimate |
+|-------|------|--------|----------|
+| Ising | L=16 | TODO | ~15-20 min |
+| Heisenberg | L=16 | TODO | ~20-30 min |
+
 | Model | Size | Status | Command |
 |-------|------|--------|---------|
 | Heisenberg | L=8 | TODO | `python3 exp3_claim3_physical_convergence_runner_v2.py --L 8 --A_size 4 --model heisenberg_open ...` |
@@ -109,18 +138,17 @@ Local (not committed, outputs/ ignored):
 ```
 /tmp/openclaws/Repos/host-adapters/outputs/claim3P_final/
 ├── ising_L8/
-│   ├── 20260225T204648Z_e95f1435/
-│   │   ├── manifest.json
-│   │   ├── metrics.json
-│   │   ├── verdict.json
-│   │   └── raw_results.csv
 │   └── 20260225T205248Z_29200b9c/
-│       └── ...
+│       ├── manifest.json, metrics.json, verdict.json, raw_results.csv
+├── heisenberg_L8/
+│   └── 20260225T231851Z_c937de30/
+│       ├── manifest.json, metrics.json, verdict.json, raw_results.csv
 └── logs/
-    └── ising_L8.log
+    ├── ising_L8.log
+    └── heisenberg_L8.log
 ```
 
 ---
 
-*Generated: 2026-02-25 15:58 UTC*  
+*Updated: 2026-02-25 18:20 UTC*  
 *Runner: experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py*
