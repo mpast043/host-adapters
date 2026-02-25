@@ -8,24 +8,52 @@ Requires Python 3.10+
 
 Requires Node.js 18+ (for the OpenClaw ES module hook)
 
+## Virtual Environment Setup
+
+```bash
+# Create and activate venv
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+# Also needed for tests:
+pip install httpx
+```
+
 ## How to Run CGF Server
 
 ```bash
-# Start the CGF server
+# With venv activated, start the CGF server
+# Default port is 8080; use CGF_PORT to override
 python server/cgf_server_v03.py
 
-# Server runs on http://127.0.0.1:8080 by default
+# Or with custom port
+CGF_PORT=8082 python server/cgf_server_v03.py
+
+# Server runs on http://127.0.0.1:8080 by default (or CGF_PORT)
 ```
 
-## How to Run Compliance Tests
+**Health Endpoint**: `/v1/health` (returns 200)
+
+**Note**: The canonical health endpoint is `/v1/health`. `/health` (without /v1/) returns 404.
+
+## How to Run Compliance Tests (Strict Mode)
+
+The contract gate requires both CGF_PORT and CGF_ENDPOINT to be set if not using default port 8080.
 
 ```bash
-# With CGF running
+# With CGF running on default port 8080
 pytest -v tools/contract_compliance_tests.py
 
-# Without CGF (test runner handles "0 tests")
+# With CGF on custom port (e.g., 8082)
+CGF_PORT=8082 CGF_ENDPOINT=http://127.0.0.1:8082 ./tools/run_contract_suite.sh
+
+# Without CGF running (test runner handles "0 tests")
 ./tools/run_contract_suite.sh
 ```
+
+**Acceptance Criteria (strict mode)**: 8 passed, 0 failed, schema lint files > 0, events > 0, errors = 0
 
 ## How to Run Schema Lint
 
