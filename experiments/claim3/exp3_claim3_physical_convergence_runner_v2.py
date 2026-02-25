@@ -70,79 +70,36 @@ class OptimizationResult:
 
 
 # ============================================================
-# Exact Diagonalization (Same as before)
+# Exact Diagonalization (SPARSE - quimb based)
 # ============================================================
 
-def build_ising_hamiltonian(L: int, j: float = 1.0, h: float = 1.0) -> np.ndarray:
-    """H = -J sum Z_i Z_{i+1} - h sum X_i"""
-    dim = 2 ** L
-    H = np.zeros((dim, dim), dtype=np.float64)
-    
-    I = np.array([[1, 0], [0, 1]], dtype=np.float64)
-    X = np.array([[0, 1], [1, 0]], dtype=np.float64)
-    Z = np.array([[1, 0], [0, -1]], dtype=np.float64)
-    
-    for i in range(L - 1):
-        ops = [I] * L
-        ops[i] = Z
-        ops[i + 1] = Z
-        ZZ = ops[0]
-        for op in ops[1:]:
-            ZZ = np.kron(ZZ, op)
-        H -= j * ZZ
-    
-    for i in range(L):
-        ops = [I] * L
-        ops[i] = X
-        X_i = ops[0]
-        for op in ops[1:]:
-            X_i = np.kron(X_i, op)
-        H -= h * X_i
-    
-    return H
-
-
-def build_heisenberg_hamiltonian(L: int, cyclic: bool = False) -> np.ndarray:
-    """H = sum S_i . S_{i+1}"""
-    dim = 2 ** L
-    H = np.zeros((dim, dim), dtype=np.complex128)
-    
-    I = np.array([[1, 0], [0, 1]], dtype=np.complex128)
-    Sx = 0.5 * np.array([[0, 1], [1, 0]], dtype=np.complex128)
-    Sy = 0.5 * np.array([[0, -1j], [1j, 0]], dtype=np.complex128)
-    Sz = 0.5 * np.array([[1, 0], [0, -1]], dtype=np.complex128)
-    
-    pairs = [(i, (i + 1) % L) for i in range(L - 1)]
-    if cyclic:
-        pairs.append((L - 1, 0))
-    
-    for i, j in pairs:
-        for A, B in [(Sx, Sx), (Sy, Sy), (Sz, Sz)]:
-            ops = [I] * L
-            ops[i] = A
-            ops[j] = B
-            
-            result = ops[0]
-            for op in ops[1:]:
-                result = np.kron(result, op)
-            H = H.astype(np.complex128)
-            H += result
-    
-    return H
-
-
-def compute_entanglement_entropy(psi: np.ndarray, L: int, A_size: int) -> float:
-    """Von Neumann entropy of reduced density matrix."""
-    dim_A = 2 ** A_size
-    dim_B = 2 ** (L - A_size)
-    psi_matrix = psi.reshape(dim_A, dim_B)
-    
-    U, s, Vh = np.linalg.svd(psi_matrix, full_matrices=False)
-    eigvals = s ** 2
+def compute_entanglement_entropy_from_rho_A(rho_A: np.ndarray) -> float:
+    """Von Neumann entropy from reduced density matrix (small, already reduced)."""
+    eigvals = np.linalg.eigvalsh(rho_A)
     eigvals = eigvals[eigvals > 1e-12]
-    
     S = -np.sum(eigvals * np.log(eigvals))
     return float(S)
+
+
+def compute_entanglement_entropy_sparse(psi: np.ndarray, L: int, A_size: int) -> float:
+    """Von Neumann entropy using partial trace contraction.
+    Only ever forms rho_A (size 2^A × 2^A), NEVER full rho.
+    """
+    dim_A = 2 ** A_size
+    # psi has shape (2^L,) - reshape to tensor network
+    psi_tensor = psi.reshape([2] * L)
+    
+    # Compute reduced density matrix by contracting over B sites
+    # rho_A[i1,i2,...,j1,j2,...] = sum_{B} psi*[i1,...,B,...] psi[j1,...,B,...]
+    psi_conj = psi_tensor.conj()
+    
+    # Build rho_A by contraction
+    # Use numpy tensordot for contraction
+    # Indices: A sites = 0..A_size-1, B sites = A_size..L-1
+    psi_Ashape = psi_tensor.reshape(dim_A, -1)
+    rho_A = psi_Ashape @ psi_Ashape.T.conj()
+    
+    return compute_entanglement_entropy_from_rho_A(rho_A)
 
 
 def fidelity(psi1: np.ndarray, psi2: np.ndarray) -> float:
@@ -153,32 +110,40 @@ def fidelity(psi1: np.ndarray, psi2: np.ndarray) -> float:
 
 def exact_diagonalization(L: int, model: str, A_size: int,
                           j: float = 1.0, h: float = 1.0, cyclic: bool = False) -> EDResult:
-    """ED for small systems."""
-    print(f"  [ED] Building {model} Hamiltonian for L={L}...")
+    """ED using quimb sparse Hamiltonian + scipy.sparse.eigsh.
+    Safe for L=16 (65K Hilbert space) using sparse eigensolver.
+    """
+    import quimb as qu
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as sla
+    
+    print(f"  [ED] Building SPARSE {model} Hamiltonian for L={L}...")
     
     if model == "ising_open":
-        H = build_ising_hamiltonian(L, j, h)
-    elif model == "heisenberg_open":
-        H = build_heisenberg_hamiltonian(L, cyclic=False)
-    elif model == "heisenberg_cyclic":
-        H = build_heisenberg_hamiltonian(L, cyclic=True)
+        # Critical: sparse=True prevents densification
+        # quimb uses jz, bx not j, h
+        H = qu.ham_ising(L, jz=j, bx=h, sparse=True, cyclic=False)
+    elif model in ["heisenberg_open", "heisenberg_cyclic"]:
+        H = qu.ham_heis(L, sparse=True, cyclic=cyclic)
     else:
         raise ValueError(f"Unknown model: {model}")
     
-    print(f"  [ED] Diagonalizing {H.shape[0]}x{H.shape[0]} matrix...")
+    # ASSERTION: Must be sparse
+    assert sp.issparse(H), f"ERROR: Hamiltonian is not sparse! Type: {type(H)}"
+    print(f"  [ED] Sparse OK: shape {H.shape}, nnz={H.nnz}, sparsity={H.nnz/H.shape[0]**2:.4%}")
     
-    if np.iscomplexobj(H):
-        eigenvalues, eigenvectors = np.linalg.eigh(H.astype(np.complex128))
-    else:
-        eigenvalues, eigenvectors = np.linalg.eigh(H)
+    # Sparse eigensolver (only need k=1 ground state)
+    print(f"  [ED] Sparse diagonalization (k=1, which='SA')...")
+    evals, evecs = sla.eigsh(H, k=1, which="SA")
     
-    idx = np.argmin(eigenvalues)
-    E0 = float(eigenvalues[idx])
-    psi0 = eigenvectors[:, idx]
+    E0 = float(evals[0].real)
+    psi0 = np.asarray(evecs[:, 0], dtype=np.complex128)
+    psi0 /= np.linalg.norm(psi0)  # Normalize
     
     print(f"  [ED] Ground state energy: {E0:.6f}")
     
-    S = compute_entanglement_entropy(psi0, L, A_size)
+    # Entropy from Schmidt decomposition
+    S = compute_entanglement_entropy_sparse(psi0, L, A_size)
     print(f"  [ED] Entanglement entropy S={S:.6f}")
     
     return EDResult(
