@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim-002",
+  "claim_title": "MERA as Optimal Capacity Allocator",
+  "verdict": "SUPPORTED",
+  "falsifier_2_1_passed": true,
+  "falsifier_2_2_passed": true,
+  "slope": 0.15458914256997208,
+  "sample_count": 20,
+  "seed": 42
+}
