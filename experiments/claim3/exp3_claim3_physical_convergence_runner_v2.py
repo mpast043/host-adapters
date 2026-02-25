@@ -1,0 +1,719 @@
+#!/usr/bin/env python3
+"""
+Claim 3P Physical Convergence Runner v2
+FRAMEWORK_SPEC_v0.2.1 compliant
+
+Phase 1: ED Gold Standard for Ising and Heisenberg
+Phase 2: MERA variational optimization (energy minimization with local terms)
+Phase 3: Compute entropy and fidelity to ED reference
+Phase 4: Acceptance criteria P3.1-P3.4
+
+Usage:
+  python3 exp3_claim3_physical_convergence_runner_v2.py --L 8 --A_size 4 \\
+    --model ising_open --j 1.0 --h 1.0 --chi_sweep 2,4,8,16 \\
+    --restarts_per_chi 3 --fit_steps 100 --seed 42 --output <RUN_DIR>
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import json
+import math
+import os
+import platform
+import sys
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional, Any
+
+import numpy as np
+
+
+# ============================================================
+# Types and Configuration
+# ============================================================
+
+@dataclass
+class Config:
+    L: int
+    A_size: int
+    model: str
+    chi_sweep: List[int]
+    restarts_per_chi: int
+    fit_steps: int
+    seed: int
+    output_dir: Path
+    j: float = 1.0
+    h: float = 1.0
+    eps_fid: float = 1e-4
+    eps_S: float = 1e-3
+
+
+@dataclass
+class EDResult:
+    ground_state_energy: float
+    ground_state_psi: np.ndarray
+    entanglement_entropy: float
+    n_sites: int
+
+
+@dataclass
+class OptimizationResult:
+    chi: int
+    restart_idx: int
+    fidelity: float
+    entropy: float
+    final_energy: float
+    seed: int
+
+
+# ============================================================
+# Exact Diagonalization (Same as before)
+# ============================================================
+
+def build_ising_hamiltonian(L: int, j: float = 1.0, h: float = 1.0) -> np.ndarray:
+    """H = -J sum Z_i Z_{i+1} - h sum X_i"""
+    dim = 2 ** L
+    H = np.zeros((dim, dim), dtype=np.float64)
+    
+    I = np.array([[1, 0], [0, 1]], dtype=np.float64)
+    X = np.array([[0, 1], [1, 0]], dtype=np.float64)
+    Z = np.array([[1, 0], [0, -1]], dtype=np.float64)
+    
+    for i in range(L - 1):
+        ops = [I] * L
+        ops[i] = Z
+        ops[i + 1] = Z
+        ZZ = ops[0]
+        for op in ops[1:]:
+            ZZ = np.kron(ZZ, op)
+        H -= j * ZZ
+    
+    for i in range(L):
+        ops = [I] * L
+        ops[i] = X
+        X_i = ops[0]
+        for op in ops[1:]:
+            X_i = np.kron(X_i, op)
+        H -= h * X_i
+    
+    return H
+
+
+def build_heisenberg_hamiltonian(L: int, cyclic: bool = False) -> np.ndarray:
+    """H = sum S_i . S_{i+1}"""
+    dim = 2 ** L
+    H = np.zeros((dim, dim), dtype=np.complex128)
+    
+    I = np.array([[1, 0], [0, 1]], dtype=np.complex128)
+    Sx = 0.5 * np.array([[0, 1], [1, 0]], dtype=np.complex128)
+    Sy = 0.5 * np.array([[0, -1j], [1j, 0]], dtype=np.complex128)
+    Sz = 0.5 * np.array([[1, 0], [0, -1]], dtype=np.complex128)
+    
+    pairs = [(i, (i + 1) % L) for i in range(L - 1)]
+    if cyclic:
+        pairs.append((L - 1, 0))
+    
+    for i, j in pairs:
+        for A, B in [(Sx, Sx), (Sy, Sy), (Sz, Sz)]:
+            ops = [I] * L
+            ops[i] = A
+            ops[j] = B
+            
+            result = ops[0]
+            for op in ops[1:]:
+                result = np.kron(result, op)
+            H = H.astype(np.complex128)
+            H += result
+    
+    return H
+
+
+def compute_entanglement_entropy(psi: np.ndarray, L: int, A_size: int) -> float:
+    """Von Neumann entropy of reduced density matrix."""
+    dim_A = 2 ** A_size
+    dim_B = 2 ** (L - A_size)
+    psi_matrix = psi.reshape(dim_A, dim_B)
+    
+    U, s, Vh = np.linalg.svd(psi_matrix, full_matrices=False)
+    eigvals = s ** 2
+    eigvals = eigvals[eigvals > 1e-12]
+    
+    S = -np.sum(eigvals * np.log(eigvals))
+    return float(S)
+
+
+def fidelity(psi1: np.ndarray, psi2: np.ndarray) -> float:
+    """Compute |⟨ψ₁|ψ₂⟩|²"""
+    overlap = np.vdot(psi1, psi2)
+    return float(np.abs(overlap) ** 2)
+
+
+def exact_diagonalization(L: int, model: str, A_size: int,
+                          j: float = 1.0, h: float = 1.0, cyclic: bool = False) -> EDResult:
+    """ED for small systems."""
+    print(f"  [ED] Building {model} Hamiltonian for L={L}...")
+    
+    if model == "ising_open":
+        H = build_ising_hamiltonian(L, j, h)
+    elif model == "heisenberg_open":
+        H = build_heisenberg_hamiltonian(L, cyclic=False)
+    elif model == "heisenberg_cyclic":
+        H = build_heisenberg_hamiltonian(L, cyclic=True)
+    else:
+        raise ValueError(f"Unknown model: {model}")
+    
+    print(f"  [ED] Diagonalizing {H.shape[0]}x{H.shape[0]} matrix...")
+    
+    if np.iscomplexobj(H):
+        eigenvalues, eigenvectors = np.linalg.eigh(H.astype(np.complex128))
+    else:
+        eigenvalues, eigenvectors = np.linalg.eigh(H)
+    
+    idx = np.argmin(eigenvalues)
+    E0 = float(eigenvalues[idx])
+    psi0 = eigenvectors[:, idx]
+    
+    print(f"  [ED] Ground state energy: {E0:.6f}")
+    
+    S = compute_entanglement_entropy(psi0, L, A_size)
+    print(f"  [ED] Entanglement entropy S={S:.6f}")
+    
+    return EDResult(
+        ground_state_energy=E0,
+        ground_state_psi=psi0,
+        entanglement_entropy=S,
+        n_sites=L
+    )
+
+
+# ============================================================
+# MERA Optimization (Proper Quimb Pattern)
+# ============================================================
+
+def optimize_mera_for_model(L: int, chi: int, steps: int, seed: int,
+                               model: str, j: float = 1.0, h: float = 1.0,
+                               ed_psi: Optional[np.ndarray] = None) -> Tuple[Any, float]:
+    """
+    Optimize MERA for given Hamiltonian using local terms.
+    Returns (optimized_mera, final_energy).
+    """
+    import quimb.tensor as qtn
+    import quimb as qu
+    
+    np.random.seed(seed)
+    
+    # Build random MERA
+    mera = qtn.MERA.rand(L, max_bond=chi, dtype="float64")
+    
+    # Build Hamiltonian terms
+    if model in ["ising_open", "ising_cyclic"]:
+        # Ising: -J Z_i Z_{i+1} - h X_i
+        cyclic = (model == "ising_cyclic")
+        pairs = [(i, i + 1) for i in range(L - 1)]
+        if cyclic:
+            pairs.append((L - 1, 0))
+        
+        # Build local ZZ term: -J * Z ⊗ Z
+        Z = np.array([[1, 0], [0, -1]], dtype=np.float64)
+        ZZ = -j * np.kron(Z, Z)
+        
+        # Build local X term: -h * X
+        X = np.array([[0, 1], [1, 0]], dtype=np.float64)
+        Xlocal = -h * X
+        
+        terms = {}
+        for i, j in pairs:
+            terms[(i, j)] = ZZ
+        for i in range(L):
+            terms[(i,)] = Xlocal
+            
+    elif model in ["heisenberg_open", "heisenberg_cyclic"]:
+        cyclic = (model == "heisenberg_cyclic")
+        H2 = qu.ham_heis(2).real
+        
+        pairs = [(i, (i + 1) % L) for i in range(L - 1)]
+        if cyclic:
+            pairs.append((L - 1, 0))
+        
+        terms = {pair: H2 for pair in pairs}
+    else:
+        raise ValueError(f"Unknown model: {model}")
+    
+    # Path optimizer
+    try:
+        import cotengra as ctg
+        opt = ctg.ReusableHyperOptimizer(progbar=False, reconf_opts={})
+    except Exception:
+        opt = "auto-hq"
+    
+    # Norm function for MERA
+    def norm_fn(m):
+        return m.isometrize(method="exp")
+    
+    # Local expectation for 2-site terms
+    def local_expectation_2site(m, terms, where, optimize="auto-hq"):
+        tags = [m.site_tag(coo) for coo in where]
+        m_ij = m.select(tags, which="any")
+        m_ij_G = m_ij.gate(terms[where], where)
+        ex = m_ij_G & m_ij.H
+        return ex.contract(all, optimize=optimize)
+    
+    # Local expectation for 1-site terms (field)
+    def local_expectation_1site(m, terms, where, optimize="auto-hq"):
+        (site,) = where
+        tag = m.site_tag(site)
+        m_i = m.select([tag], which="any")
+        m_i_G = m_i.gate(terms[where], [site])
+        ex = m_i_G & m_i.H
+        return ex.contract(all, optimize=optimize)
+    
+    # Loss function
+    def loss_fn(m, terms, optimize="auto-hq"):
+        total = 0.0
+        for where in terms:
+            if len(where) == 2:
+                total += local_expectation_2site(m, terms, where, optimize=optimize)
+            else:
+                total += local_expectation_1site(m, terms, where, optimize=optimize)
+        return total
+    
+    # Create optimizer
+    tnopt = qtn.TNOptimizer(
+        mera,
+        loss_fn=loss_fn,
+        norm_fn=norm_fn,
+        loss_constants={"terms": terms},
+        loss_kwargs={"optimize": opt},
+        autodiff_backend="torch",
+        device="cpu",
+        jit_fn=False,
+    )
+    
+    # Optimize
+    tnopt.optimizer = "l-bfgs-b"
+    try:
+        mera_opt = tnopt.optimize(steps)
+        final_energy = float(loss_fn(mera_opt, terms))
+    except Exception as e:
+        print(f"    Optimization failed: {e}")
+        mera_opt = mera
+        final_energy = float(loss_fn(mera, terms))
+    
+    return mera_opt, final_energy
+
+
+def compute_entropy_from_mera(mera, L: int, A_sites: List[int]) -> float:
+    """
+    Compute S(A) from MERA by forming reduced density matrix.
+    """
+    import quimb.tensor as qtn
+    
+    A_size = len(A_sites)
+    
+    # Build bra with different index labels
+    bra = mera.H.reindex_sites("b{}", A_sites)
+    
+    # Select causal cone
+    tags = [mera.site_tag(i) for i in A_sites]
+    rho_tn = bra.select(tags, which="any") & mera.select(tags, which="any")
+    
+    left_inds = tuple(f"k{i}" for i in A_sites)
+    right_inds = tuple(f"b{i}" for i in A_sites)
+    
+    # Dense rho_A
+    rho = rho_tn.to_dense(left_inds, right_inds)
+    rho = np.array(rho, dtype=np.complex128)
+    rho = 0.5 * (rho + rho.conj().T)
+    
+    # Normalize
+    tr = float(np.real_if_close(np.trace(rho)))
+    if tr > 0:
+        rho = rho / tr
+    
+    # Eigenvalues
+    evals = np.linalg.eigvalsh(rho)
+    evals = np.real_if_close(evals).astype(float)
+    evals = np.clip(evals, 0.0, 1.0)
+    
+    # Von Neumann entropy
+    eps = 1e-15
+    S = float(-np.sum(evals * np.log(evals + eps)))
+    
+    return S
+
+
+def run_mera_with_restarts(L: int, chi: int, ed_psi: np.ndarray,
+                           ed_result: EDResult, model: str, steps: int,
+                           restarts: int, seed_base: int,
+                           j: float = 1.0, h: float = 1.0) -> List[OptimizationResult]:
+    """Run MERA optimization with multiple restarts."""
+    
+    A_sites = list(range(L // 2))  # Contiguous partition
+    
+    results = []
+    for restart in range(restarts):
+        seed = seed_base + restart * 1000 + chi * 10000
+        print(f"    [MERA] chi={chi}, restart={restart+1}/{restarts}, seed={seed}")
+        
+        try:
+            mera_opt, energy = optimize_mera_for_model(
+                L=L, chi=chi, steps=steps, seed=seed,
+                model=model, j=j, h=h, ed_psi=ed_psi
+            )
+            
+            # Compute entropy
+            entropy = compute_entropy_from_mera(mera_opt, L, A_sites)
+            
+            # Compute fidelity to ED ground state
+            psi_mera = mera_opt.to_dense().reshape(-1)
+            psi_mera = psi_mera / np.linalg.norm(psi_mera)
+            fid = fidelity(psi_mera, ed_psi)
+            
+            print(f"      fidelity={fid:.6f}, S={entropy:.4f}, E={energy:.4f}")
+            
+            results.append(OptimizationResult(
+                chi=chi,
+                restart_idx=restart,
+                fidelity=fid,
+                entropy=entropy,
+                final_energy=energy,
+                seed=seed
+            ))
+            
+        except Exception as e:
+            print(f"      ERROR: {e}")
+            results.append(OptimizationResult(
+                chi=chi,
+                restart_idx=restart,
+                fidelity=0.0,
+                entropy=0.0,
+                final_energy=0.0,
+                seed=seed
+            ))
+    
+    return results
+
+
+# ============================================================
+# Falsifiers (P3.1-P3.4)
+# ============================================================
+
+def falsifier_p31_nondecreasing_fidelity(best_fidelities: List[float],
+                                         chi_values: List[int],
+                                         eps_fid: float = 1e-4) -> Dict[str, Any]:
+    """P3.1: Best fidelity is nondecreasing in chi."""
+    violations = []
+    for i in range(len(best_fidelities) - 1):
+        if best_fidelities[i+1] < best_fidelities[i] - eps_fid:
+            violations.append({
+                "chi_i": chi_values[i],
+                "chi_i+1": chi_values[i+1],
+                "fid_i": best_fidelities[i],
+                "fid_i+1": best_fidelities[i+1],
+                "drop": best_fidelities[i] - best_fidelities[i+1]
+            })
+    
+    return {
+        "passed": len(violations) == 0,
+        "violations": violations,
+        "n_checks": len(best_fidelities) - 1,
+        "eps_fid": eps_fid
+    }
+
+
+def falsifier_p32_entropy_convergence(S_best: List[float], S_ref: float,
+                                       chi_values: List[int],
+                                       eps_S: float = 1e-3) -> Dict[str, Any]:
+    """P3.2: Entropy error |S_best(chi) - S_ref| is nonincreasing."""
+    errors = [abs(s - S_ref) for s in S_best]
+    violations = []
+    
+    for i in range(len(errors) - 1):
+        if errors[i+1] > errors[i] + eps_S:
+            violations.append({
+                "chi_i": chi_values[i],
+                "chi_i+1": chi_values[i+1],
+                "error_i": errors[i],
+                "error_i+1": errors[i+1]
+            })
+    
+    return {
+        "passed": len(violations) == 0,
+        "errors": errors,
+        "violations": violations,
+        "n_checks": len(errors) - 1,
+        "eps_S": eps_S
+    }
+
+
+def falsifier_p33_final_thresholds(best_fidelity: float, final_entropy_error: float,
+                                   L: int, model: str) -> Dict[str, Any]:
+    """P3.3: Final thresholds based on system size."""
+    fid_threshold = 0.90 if L >= 16 else 0.95
+    S_threshold = 0.15
+    
+    fid_passed = best_fidelity >= fid_threshold
+    S_passed = final_entropy_error <= S_threshold
+    
+    return {
+        "passed": fid_passed and S_passed,
+        "fid_passed": fid_passed,
+        "S_passed": S_passed,
+        "best_fidelity": best_fidelity,
+        "final_entropy_error": final_entropy_error,
+        "fid_threshold": fid_threshold,
+        "S_threshold": S_threshold
+    }
+
+
+def fit_saturating_model(chi_values: List[int], S_values: List[float],
+                          S_ref: float) -> Tuple[float, float, float]:
+    """Fit S(chi) = S_inf * chi / (chi + c)"""
+    chi_arr = np.array(chi_values, dtype=float)
+    S_arr = np.array(S_values, dtype=float)
+    
+    best_rss = float('inf')
+    best_params = (S_ref, 1.0)
+    
+    for S_inf in np.linspace(S_ref * 0.8, S_ref * 1.2, 30):
+        for c in np.linspace(0.1, max(chi_arr) * 3, 30):
+            S_pred = S_inf * chi_arr / (chi_arr + c)
+            rss = np.sum((S_arr - S_pred) ** 2)
+            if rss < best_rss:
+                best_rss = rss
+                best_params = (S_inf, c)
+    
+    return best_params[0], best_params[1], best_rss
+
+
+def fit_log_linear_model(chi_values: List[int], S_values: List[float]) -> Tuple[float, float, float]:
+    """Fit S(chi) = a * log(chi) + b"""
+    chi_arr = np.array(chi_values, dtype=float)
+    S_arr = np.array(S_values, dtype=float)
+    
+    log_chi = np.log(chi_arr)
+    X = np.column_stack([log_chi, np.ones(len(log_chi))])
+    coef, _, _, _ = np.linalg.lstsq(X, S_arr, rcond=None)
+    a, b = coef[0], coef[1]
+    
+    S_pred = a * log_chi + b
+    rss = np.sum((S_arr - S_pred) ** 2)
+    
+    return a, b, rss
+
+
+def aic_bic_from_rss(rss: float, n: int, k: int) -> Tuple[float, float]:
+    rss = max(float(rss), 1e-12)
+    aic = n * math.log(rss / n) + 2 * k
+    bic = n * math.log(rss / n) + k * math.log(n)
+    return float(aic), float(bic)
+
+
+def falsifier_p34_model_selection(chi_values: List[int], S_best: List[float],
+                                   S_ref: float) -> Dict[str, Any]:
+    """P3.4: Saturating model beats log-linear (ΔAIC/BIC >= 10)"""
+    # Saturating fit
+    S_inf_sat, c_sat, rss_sat = fit_saturating_model(chi_values, S_best, S_ref)
+    aic_sat, bic_sat = aic_bic_from_rss(rss_sat, len(chi_values), 2)
+    
+    # Log-linear fit
+    a_log, b_log, rss_log = fit_log_linear_model(chi_values, S_best)
+    aic_log, bic_log = aic_bic_from_rss(rss_log, len(chi_values), 2)
+    
+    delta_aic = aic_log - aic_sat
+    delta_bic = bic_log - bic_sat
+    
+    saturating_wins = delta_aic >= 10 and delta_bic >= 10
+    
+    return {
+        "passed": saturating_wins,
+        "delta_aic": delta_aic,
+        "delta_bic": delta_bic,
+        "S_inf_sat": S_inf_sat,
+        "c_sat": c_sat,
+        "aic_sat": aic_sat,
+        "bic_sat": bic_sat,
+        "a_log": a_log,
+        "b_log": b_log,
+        "aic_log": aic_log,
+        "bic_log": bic_log
+    }
+
+
+# ============================================================
+# Main Runner
+# ============================================================
+
+def make_run_id() -> str:
+    t = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    r = os.urandom(4).hex()
+    return f"{t}_{r}"
+
+
+def write_json(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, default=str)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Claim 3P Physical Convergence v2")
+    ap.add_argument("--L", type=int, required=True)
+    ap.add_argument("--A_size", type=int, required=True)
+    ap.add_argument("--model", choices=["ising_open", "heisenberg_open"], required=True)
+    ap.add_argument("--j", type=float, default=1.0)
+    ap.add_argument("--h", type=float, default=1.0)
+    ap.add_argument("--chi_sweep", default="2,4,8,16")
+    ap.add_argument("--restarts_per_chi", type=int, default=3)
+    ap.add_argument("--fit_steps", type=int, default=100)
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--output", type=Path, required=True)
+    ap.add_argument("--eps_fid", type=float, default=1e-4)
+    ap.add_argument("--eps_S", type=float, default=1e-3)
+    
+    args = ap.parse_args()
+    
+    chi_sweep = [int(x.strip()) for x in args.chi_sweep.split(",") if x.strip()]
+    
+    config = Config(
+        L=args.L, A_size=args.A_size, model=args.model,
+        chi_sweep=chi_sweep, restarts_per_chi=args.restarts_per_chi,
+        fit_steps=args.fit_steps, seed=args.seed,
+        output_dir=Path(args.output),
+        j=args.j, h=args.h, eps_fid=args.eps_fid, eps_S=args.eps_S
+    )
+    
+    run_id = make_run_id()
+    run_dir = config.output_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("=" * 70)
+    print("CLAIM 3P: Physical Hamiltonian Convergence Test (v2)")
+    print("=" * 70)
+    print(f"Model: {config.model}")
+    print(f"System: L={config.L}, A={config.A_size}")
+    print(f"Chi sweep: {config.chi_sweep}")
+    print(f"Restarts: {config.restarts_per_chi}")
+    print(f"Steps: {config.fit_steps}")
+    print(f"Output: {run_dir}")
+    print("=" * 70)
+    
+    # Phase 1: ED
+    print("\n[Phase 1] Exact Diagonalization")
+    ed_result = exact_diagonalization(
+        L=config.L, model=config.model, A_size=config.A_size,
+        j=config.j, h=config.h
+    )
+    
+    # Phase 2: MERA optimization
+    print("\n[Phase 2] MERA Variational Optimization")
+    
+    all_results = []
+    best_results = []
+    
+    for chi in config.chi_sweep:
+        print(f"\n  Chi = {chi}")
+        results = run_mera_with_restarts(
+            L=config.L, chi=chi, ed_psi=ed_result.ground_state_psi,
+            ed_result=ed_result, model=config.model, steps=config.fit_steps,
+            restarts=config.restarts_per_chi, seed_base=config.seed,
+            j=config.j, h=config.h
+        )
+        
+        best = max(results, key=lambda r: r.fidelity)
+        best_results.append(best)
+        all_results.extend(results)
+        print(f"  Best: fidelity={best.fidelity:.6f}, S={best.entropy:.4f}")
+    
+    # Extract for falsifiers
+    best_fids = [r.fidelity for r in best_results]
+    best_S = [r.entropy for r in best_results]
+    
+    # Phase 3: Acceptance criteria
+    print("\n[Phase 3] Acceptance Criteria")
+    
+    p31 = falsifier_p31_nondecreasing_fidelity(best_fids, config.chi_sweep, config.eps_fid)
+    print(f"  P3.1 Fidelity nondecreasing: {'PASS' if p31['passed'] else 'FAIL'}")
+    
+    p32 = falsifier_p32_entropy_convergence(best_S, ed_result.entanglement_entropy,
+                                            config.chi_sweep, config.eps_S)
+    print(f"  P3.2 Entropy convergence: {'PASS' if p32['passed'] else 'FAIL'}")
+    
+    final_fid = best_fids[-1]
+    final_S_err = abs(best_S[-1] - ed_result.entanglement_entropy)
+    p33 = falsifier_p33_final_thresholds(final_fid, final_S_err, config.L, config.model)
+    print(f"  P3.3 Final thresholds: {'PASS' if p33['passed'] else 'FAIL'}")
+    print(f"        Fidelity: {final_fid:.4f} (threshold: {p33['fid_threshold']})")
+    print(f"        S error: {final_S_err:.4f} (threshold: {p33['S_threshold']})")
+    
+    p34 = falsifier_p34_model_selection(config.chi_sweep, best_S, ed_result.entanglement_entropy)
+    print(f"  P3.4 Model selection: {'PASS' if p34['passed'] else 'FAIL'}")
+    print(f"        Delta AIC: {p34['delta_aic']:.2f}")
+    print(f"        Delta BIC: {p34['delta_bic']:.2f}")
+    
+    # Final verdict
+    all_passed = all([p31['passed'], p32['passed'], p33['passed'], p34['passed']])
+    verdict = "SUPPORTED" if all_passed else "REJECTED"
+    
+    print(f"\n{'=' * 70}")
+    print(f"FINAL VERDICT: {verdict}")
+    print(f"{'=' * 70}")
+    
+    # Save artifacts
+    print(f"\n[Phase 4] Saving artifacts to {run_dir}")
+    
+    # Metrics
+    write_json(run_dir / "metrics.json", {
+        "chi_sweep": config.chi_sweep,
+        "ed_reference": {
+            "energy": float(ed_result.ground_state_energy),
+            "entropy": float(ed_result.entanglement_entropy)
+        },
+        "best_per_chi": [
+            {"chi": r.chi, "fidelity": r.fidelity, "entropy": r.entropy}
+            for r in best_results
+        ]
+    })
+    
+    # Verdict
+    write_json(run_dir / "verdict.json", {
+        "claim": "3P",
+        "model": config.model,
+        "L": config.L,
+        "verdict": verdict,
+        "falsifiers": {"P3.1": p31, "P3.2": p32, "P3.3": p33, "P3.4": p34},
+        "timestamp": dt.datetime.now(dt.timezone.utc).isoformat()
+    })
+    
+    # Manifest
+    write_json(run_dir / "manifest.json", {
+        "run_id": run_id,
+        "config": {
+            "L": config.L, "A_size": config.A_size, "model": config.model,
+            "chi_sweep": config.chi_sweep, "restarts": config.restarts_per_chi,
+            "steps": config.fit_steps, "seed": config.seed
+        },
+        "ed_reference": {
+            "energy": float(ed_result.ground_state_energy),
+            "entropy": float(ed_result.entanglement_entropy)
+        },
+        "verdict": verdict
+    })
+    
+    # CSV
+    with open(run_dir / "raw_results.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["chi", "restart", "seed", "fidelity", "entropy", "energy"])
+        for r in all_results:
+            writer.writerow([r.chi, r.restart_idx, r.seed, r.fidelity, r.entropy, r.final_energy])
+    
+    print(f"  Saved: metrics.json, verdict.json, manifest.json, raw_results.csv")
+    
+    return 0 if verdict == "SUPPORTED" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
