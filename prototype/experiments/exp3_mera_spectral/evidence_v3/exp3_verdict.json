@@ -1,0 +1,11 @@
+{
+  "claim_id": "claim-003-v3",
+  "claim_title": "Entanglement Entropy Holographic Bound",
+  "verdict": "SUPPORTED",
+  "falsifier_3_1_passed": true,
+  "falsifier_3_2_passed": true,
+  "correlation": 0.9962120730874304,
+  "ratio_cv": 0.036345408321139965,
+  "sample_count": 11,
+  "seed": 42
+}
