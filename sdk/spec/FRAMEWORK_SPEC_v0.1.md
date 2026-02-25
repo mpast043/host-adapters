@@ -1,172 +1,232 @@
 # FRAMEWORK_SPEC_v0.1.md
-## v4.5 Research Framework Specification
 
-**Version:** 0.1.0  
-**Date:** 2026-02-24  
-**Status:** Draft - For Multi-Agent Workflow Governance
+Authoritative specification for Framework v4.5 development and agent execution.
 
----
-
-## 1. PURPOSE
-
-This specification defines the operating discipline for research conducted under the Capacity-Governed Framework (CGF) multi-agent system. It anchors all claims, governs citation requirements, mandates reproducibility standards, and establishes falsifiable hypotheses.
+Status: canonical
+Scope: governs research, mathematical derivation, simulation, and validation workflows.
 
 ---
 
-## 2. CORE PRINCIPLES
+## 0. Purpose
 
-### 2.1 Claims Discipline
-- Every claim must have a **citation** or **derivation**.
-- Claims are categorized:
-  - **Type A (Established)**: Peer-reviewed source with independent replication.
-  - **Type B (Working)**: Single source or derivation from first principles.
-  - **Type C (Speculative)**: Hypothesis with explicit falsifier defined.
+This document defines the operational and mathematical contract for developing,
+testing, and extending the capacity-indexed framework.
 
-### 2.2 Citations
-- Each source requires: title, authors, year, venue, URL, and 3–5 bullet rationale.
-- Preferred sources: arXiv, peer-reviewed journals, conference proceedings.
-- Web sources must be archived (Wayback Machine or equivalent).
+All agents MUST:
 
-### 2.3 Reproducibility
-- All experiments must specify:
-  - Deterministic seed(s)
-  - Exact software versions (Python, GPU, CUDA if applicable)
-  - Input data or generation procedure
-  - Expected output format and validation criteria
-- Code must be CPU-runnable on standard hardware (no exotic dependencies).
-
-### 2.4 Definitions
-All technical terms used in claims must appear here first:
-
-| Term | Definition | Source |
-|------|------------|--------|
-| **Emergent Spacetime** | Geometry that arises from informational/quantum constraints rather than fundamental manifold. | Type B: Van Raamsdonk et al. |
-| **Spectral Dimension** | Effective dimension computed from random walk return probability decay on a graph or manifold. | Type A: Ambjørn et al. (2005) |
-| **MERA** | Multi-scale Entanglement Renormalization Ansatz - tensor network for critical systems. | Type A: Vidal (2007) |
-| **RT Formula** | Ryu-Takayanagi formula relating entanglement entropy to minimal surface area. | Type A: Ryu & Takayanagi (2006) |
-| **Nonseparable Laplacian** | Operator where eigenfunctions cannot be factored into product of independent components. | Type B: Working definition |
-| **Information Bottleneck** | Trade-off between compression and prediction in information theory. | Type A: Tishby et al. (1999) |
-| **Renormalization Dimension Flow** | Change in effective dimension under coarse-graining/scale transformation. | Type C: Hypothesis |
+* Load this spec before producing outputs
+* Cite SpecRef sections in every artifact
+* Refuse work that contradicts invariants defined here
 
 ---
 
-## 3. RESEARCH SCOPE
+## 1. Core Claim
 
-### 3.1 Primary Domains
-1. Emergent spacetime from quantum information
-2. Spectral dimension and random walks on graphs
-3. MERA tensor networks and holography
-4. Renormalization group flows and geometric emergence
-5. Nonseparable operators and capacity constraints
-6. Information bottlenecks and effective geometry
+A fixed substrate can yield different effective geometry when observational
+capacity changes.
 
-### 3.2 Falsifiable Claims (Framework v4.5)
+Geometry is not primary.
+Geometry emerges from capacity-bounded observation.
 
-#### Claim 1: Spectral Dimension as Effective Observer Capacity
-**Statement:** The spectral dimension of a graph at diffusion time τ equals the effective dimension experienced by an observer with capacity constraint C_obs = f(τ).
+Observable implication:
+spectral dimension and interaction behavior vary as functions of capacity axes.
 
-**Derivation Sketch:**
-1. Random walk return probability P(τ) ∝ τ^(-d_s/2) defines spectral dimension d_s.
-2. Observer with capacity C can resolve at most C degrees of freedom.
-3. At timescale τ, available resolution constrains visible subgraph.
-4. Proven for finite graphs with Laplacian L having |supp(ψ)| ≤ C.
-
-**Observable Measurement:** 
-- Compute d_s via heat kernel trace on sample graphs.
-- Measure capacity via information bottleneck compression ratio.
-- Compare: d_s(observed) vs. d_s(capacity-limited).
-
-**Falsifier:** If capacity-constrained observers measure d_s that does NOT correlate with τ^(-d_eff/2) where d_eff = f(C), claim is falsified.
-
-#### Claim 2: MERA as Optimal Capacity Allocator
-**Statement:** For 1D critical systems, MERA minimizes the capacity cost function C_geo + C_int while preserving entanglement structure.
-
-**Derivation Sketch:**
-1. Each tensor in MERA consumes C_geo (physical indices) + C_int (bond dimensions).
-2. Isometries reduce bond dimension while preserving reduced density matrix.
-3. Disentanglers optimize for minimal mutual information across cut.
-4. Result: MERA achieves optimal compression-expressiveness tradeoff.
-
-**Observable Measurement:**
-- Compare MERA bond dimensions to random tensor networks.
-- Measure reconstruction error vs. capacity cost.
-- Compute entanglement entropy across any cut using RT formula.
-
-**Falsifier:** If random tensor network achieves lower (C_geo + C_int) at same reconstruction error, claim is falsified.
+SpecRef: §1
 
 ---
 
-## 4. AGENT ROLES
+## 2. Primitive Objects
 
-### Agent A: Researcher
-- Gathers 8–12 real sources relevant to domains in 3.1.
-- Validates citations (no fabrication).
-- Outputs: `agentA_research.md`, `agentA_sources.json`.
+These are the only allowed base constructs.
 
-### Agent B: Mathematician
-- Produces 1–2 concrete math supports for Claim 1 or Claim 2.
-- Must include: definitions, derivation/proof sketch, observable, falsifier.
-- Outputs: `agentB_math.md`, `agentB_claims.json`.
+2.1 Substrate S
 
-### Agent C: Engineer
-- Maps claims to minimal prototype experiments.
-- Discovers true file paths (no hallucination).
-- Writes code ONLY under `<RUN_DIR>/prototype/`.
-- Outputs: `agentC_engineering.md`, `agentC_patch_plan.json`, optional code.
+* Discrete or continuous base structure
+* Does NOT encode geometry directly
 
----
+2.2 Capacity Vector C
+C = (C_geo, C_int, C_obs, C_ptr, C_gauge)
 
-## 5. GOVERNANCE CONSTRAINTS
+Definitions:
 
-1. All side-effect actions must route through CGF governance.
-2. Allowed side effects: writing files ONLY under designated `outputs/` subdirectories.
-3. No edits to repo source files during runtime.
-4. Contract compliance suite must pass (8/8 tests) before and after run.
-5. Replay verification must confirm deterministic decisions.
+* C_geo: geometric observation capacity
+* C_int: interaction resolution capacity
+* C_obs: observer bandwidth
+* C_ptr: pointer stability / memory persistence
+* C_gauge: symmetry resolution capacity
 
----
+2.3 Observer O
+Defined only by:
 
-## 6. OUTPUT ARTIFACTS
+* access limits over C
+* signal interpretation rules
 
-### Phase 2 (Researcher)
-- `agentA_research.md`
-- `agentA_sources.json`
+2.4 Signal Field Σ
+Raw interaction emissions independent of geometry.
 
-### Phase 3 (Mathematician)
-- `agentB_math.md`
-- `agentB_claims.json`
-
-### Phase 4 (Engineer)
-- `agentC_engineering.md`
-- `agentC_patch_plan.json`
-- `prototype/*.py` (optional)
-
-### Phase 5 (Governance)
-- `multiagent_timeline.md`
-- `schema_lint.txt`
-- `replay_verify.txt` (if applicable)
+SpecRef: §2
 
 ---
 
-## 7. ACCEPTANCE CRITERIA
+## 3. Transformation Rule
 
-- [ ] 8–12 real sources with full citations.
-- [ ] 1–2 math claims with derivations and falsifiers.
-- [ ] Prototype plan maps to real file paths.
-- [ ] Contract compliance: 8/8 tests pass.
-- [ ] Schema lint: 0 errors, 0 warnings.
-- [ ] Deterministic replay: decisions match on re-evaluation.
+Geometry emerges via capacity filtering:
+
+G_eff = T(S, C)
+
+Where:
+
+* S = substrate
+* C = capacity vector
+* T = capacity-indexed transformation operator
+
+Constraints:
+
+* T must not encode geometry a priori
+* T must be deterministic under fixed seed
+
+SpecRef: §3
 
 ---
 
-## 8. REFERENCES
+## 4. Observables
 
-Ambjørn, J., Jurkiewicz, J., & Loll, R. (2005). Spectral dimension of the universe. *Physical Review Letters*, 95(17), 171301.
+Valid measurable outputs:
 
-Ryu, S., & Takayanagi, T. (2006). Holographic derivation of entanglement entropy from the anti-de Sitter space/conformal field theory correspondence. *Physical Review Letters*, 96(18), 181602.
+4.1 Spectral dimension d_s
+4.2 Interaction decay profiles
+4.3 Correlator stability
+4.4 Degeneracy shifts under ΔC
+4.5 Threshold transitions across capacity regimes
 
-Tishby, N., Pereira, F. C., & Bialek, W. (1999). The information bottleneck method. *arXiv preprint physics/0004057*.
+All simulations must output at least one observable.
 
-Vidal, G. (2007). Entanglement renormalization. *Physical Review Letters*, 99(22), 220405.
+SpecRef: §4
 
-Van Raamsdonk, M. (2010). Building up spacetime with quantum entanglement. *General Relativity and Gravitation*, 42(10), 2323–2329.
+---
+
+## 5. Allowed Mathematical Directions
+
+Candidate math must:
+
+* operate on S and C only
+* produce operator T
+* yield measurable observables from §4
+
+Permitted domains:
+
+* spectral graph theory
+* non-separable Laplacians
+* operator algebras
+* information geometry
+* renormalization-like capacity flows
+
+Disallowed:
+
+* inserting geometry explicitly
+* post-hoc curve fitting without operator derivation
+
+SpecRef: §5
+
+---
+
+## 6. Falsification Conditions
+
+The framework fails if any occur:
+
+F1:
+d_s remains invariant across meaningful ΔC
+
+F2:
+Different T yield identical observables independent of C
+
+F3:
+Geometry must be inserted to produce expected behavior
+
+F4:
+No measurable observables respond to capacity modulation
+
+If triggered:
+
+* stop iteration
+* report violation
+* do NOT auto-revise spec
+
+SpecRef: §6
+
+---
+
+## 7. Agent Roles
+
+A1 ResearchScout
+
+* find math directions compatible with primitives
+
+A2 MathSynth
+
+* construct operators T
+
+A3 SimulationArchitect
+
+* design executable models
+
+A4 Executor
+
+* run experiments
+
+A5 Auditor
+
+* verify compliance + falsification checks
+
+SpecRef: §7
+
+---
+
+## 8. Reproducibility Rules
+
+All runs must include:
+
+* deterministic seed
+* parameter grid definition
+* operator definition snapshot
+* output metrics manifest
+
+SpecRef: §8
+
+---
+
+## 9. Output Requirements
+
+Every artifact must contain:
+
+* SpecRef citations
+* equations or operators
+* measurable predictions
+* no narrative-only outputs
+
+SpecRef: §9
+
+---
+
+## 10. Governance Constraints
+
+Agents must refuse:
+
+* speculative storytelling
+* claims without operator construction
+* results without reproducibility metadata
+* outputs missing SpecRef citations
+
+SpecRef: §10
+
+---
+
+## 11. Versioning
+
+Spec version: 0.1
+Compatibility:
+
+* additive updates allowed
+* breaking changes require new version
+
+SpecRef: §11

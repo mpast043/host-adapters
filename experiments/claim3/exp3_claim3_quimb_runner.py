@@ -267,7 +267,7 @@ def maybe_optimize_heisenberg(mera, L: int, steps: int, autodiff: str, device: s
 
     def norm_fn(m):
         # project tensors back to isometric/unitary manifold
-        return m.unitize(method="exp")
+        return m.isometrize(method="exp")
 
     def local_expectation(m, terms, where, optimize="auto-hq"):
         tags = [m.site_tag(coo) for coo in where]
@@ -366,7 +366,7 @@ def main() -> None:
 
             # Build MERA with actual tensors
             mera = qtn.MERA.rand(L, max_bond=chi, dtype="float64")
-            mera.unitize_()
+            mera.isometrize_()
 
             if args.state == "heisenberg_opt":
                 # optimize tensors for Heisenberg model

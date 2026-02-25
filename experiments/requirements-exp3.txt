@@ -1,0 +1,18 @@
+# Experiment-specific dependencies for Claim 3 runners
+# Install: pip install -r requirements-exp3.txt
+
+# Core numerics
+numpy>=1.24.0
+
+# MERA tensor network computation (quimb runner)
+quimb>=1.4.0
+cotengra>=0.5.0
+
+# Graph algorithms for min-cut K_cut calculation
+networkx>=3.1
+
+# Optional: variational optimization (heisenberg_opt mode)
+torch>=2.0.0
+
+# Utilities
+pyyaml>=6.0
