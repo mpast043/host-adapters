@@ -401,6 +401,10 @@ class CGFDecision(BaseCGFSchema):
     reason_code: Optional[str] = None
     constraint: Optional[ConstraintConfig] = None
     excised_features: Optional[List[str]] = None
+    # P8 Policy Engine v1.0 additions (additive, backward compatible)
+    policy_version: Optional[str] = Field(default=None, description="Policy bundle version used")
+    matched_rule_ids: Optional[List[str]] = Field(default=None, description="Rules that matched to produce decision")
+    explanation_text: Optional[str] = Field(default=None, description="Human-readable explanation of decision")
 
 class HostEvaluationRequest(BaseCGFSchema):
     """Evaluation request from host."""

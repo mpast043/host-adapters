@@ -1,0 +1,164 @@
+{
+  "policy_version": "1.0.0",
+  "bundle_hash": "9e172b102bbd01609c0e3ab53df893bdeabd160b4a957736e514ce8153a46f34",
+  "rules": [
+    {
+      "id": "denylisted-tool",
+      "priority": 100,
+      "when": [
+        {
+          "field": "proposal.tool_name",
+          "op": "in",
+          "value": [
+            "file_write",
+            "fs_write",
+            "write",
+            "save",
+            "exec",
+            "shell",
+            "eval",
+            "bash",
+            "python_exec",
+            "subprocess"
+          ]
+        }
+      ],
+      "decision": "BLOCK",
+      "constraint": null,
+      "audit": true,
+      "confidence": 1.0
+    },
+    {
+      "id": "large-memory-write",
+      "priority": 90,
+      "when": [
+        {
+          "field": "proposal.action_type",
+          "op": "eq",
+          "value": "memory_write"
+        },
+        {
+          "field": "proposal.size_bytes",
+          "op": "gt",
+          "value": 10000000
+        }
+      ],
+      "decision": "CONSTRAIN",
+      "constraint": {
+        "type": "quarantine_namespace",
+        "params": {
+          "target_namespace": "_quarantine_",
+          "source_namespace": "default"
+        }
+      },
+      "audit": false,
+      "confidence": 0.9
+    },
+    {
+      "id": "high-sensitivity-low-confidence",
+      "priority": 80,
+      "when": [
+        {
+          "field": "proposal.sensitivity_hint",
+          "op": "eq",
+          "value": "high"
+        }
+      ],
+      "decision": "CONSTRAIN",
+      "constraint": {
+        "type": "quarantine_namespace",
+        "params": {}
+      },
+      "audit": false,
+      "confidence": 0.85
+    },
+    {
+      "id": "high-risk-error-rate",
+      "priority": 70,
+      "when": [
+        {
+          "field": "proposal.risk_tier",
+          "op": "eq",
+          "value": "high"
+        },
+        {
+          "field": "signals.error_rate",
+          "op": "gt",
+          "value": 0.3
+        }
+      ],
+      "decision": "BLOCK",
+      "constraint": null,
+      "audit": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "readonly-allowlist",
+      "priority": 50,
+      "when": [
+        {
+          "field": "proposal.tool_name",
+          "op": "regex",
+          "value": "^(read|get|search|query|list|cat|ls)_.*$"
+        }
+      ],
+      "decision": "ALLOW",
+      "constraint": null,
+      "audit": false,
+      "confidence": 0.95
+    },
+    {
+      "id": "default-allow",
+      "priority": 0,
+      "when": [],
+      "decision": "ALLOW",
+      "constraint": null,
+      "audit": false,
+      "confidence": 0.85
+    }
+  ],
+  "fail_modes": [
+    {
+      "action_type": "tool_call",
+      "risk_tier": "high",
+      "fail_mode": "fail_closed",
+      "timeout_ms": 500,
+      "rationale": "Side-effect tools default to fail-closed"
+    },
+    {
+      "action_type": "tool_call",
+      "risk_tier": "medium",
+      "fail_mode": "defer",
+      "timeout_ms": 500,
+      "rationale": "Network/uncertain tools defer to user"
+    },
+    {
+      "action_type": "tool_call",
+      "risk_tier": "low",
+      "fail_mode": "fail_open",
+      "timeout_ms": 500,
+      "rationale": "Read-only tools safe to fail-open"
+    },
+    {
+      "action_type": "memory_write",
+      "risk_tier": "high",
+      "fail_mode": "fail_closed",
+      "timeout_ms": 500,
+      "rationale": "High-sensitivity writes must be governed"
+    },
+    {
+      "action_type": "memory_write",
+      "risk_tier": "medium",
+      "fail_mode": "fail_closed",
+      "timeout_ms": 500,
+      "rationale": "Medium-sensitivity writes default to fail-closed"
+    },
+    {
+      "action_type": "memory_write",
+      "risk_tier": "low",
+      "fail_mode": "fail_open",
+      "timeout_ms": 500,
+      "rationale": "Low-sensitivity writes safe to fail-open"
+    }
+  ]
+}

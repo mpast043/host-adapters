@@ -65,6 +65,39 @@ except ImportError:
     HAS_V03 = False
     print("Warning: Using v0.2 schemas (cgf_schemas_v03 not found)")
 
+# ============== UTILITIES ==============
+
+def generate_id(prefix: str = "id") -> str:
+    """Generate a unique ID with prefix."""
+    import uuid
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+# ============== POLICY ENGINE v1.0 ==============
+# P8: Load policy bundle at startup
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from cgf_policy import load_policy_bundle, evaluate, PolicyBundle, get_fail_mode
+    from cgf_policy.types import DecisionType as PolicyDecisionType
+    HAS_POLICY_ENGINE = True
+except ImportError as e:
+    HAS_POLICY_ENGINE = False
+    print(f"Warning: Policy engine not available: {e}")
+
+# Load policy bundle from env or default
+POLICY_BUNDLE_PATH = Path(os.environ.get("CGF_POLICY_BUNDLE_PATH", Path(__file__).parent.parent / "policy" / "policy_bundle_v1.json"))
+POLICY_BUNDLE: PolicyBundle | None = None
+
+if HAS_POLICY_ENGINE and POLICY_BUNDLE_PATH.exists():
+    try:
+        POLICY_BUNDLE = load_policy_bundle(POLICY_BUNDLE_PATH)
+        print(f"Policy bundle loaded: {POLICY_BUNDLE.policy_version} (hash: {POLICY_BUNDLE.bundle_hash[:16]}...)")
+    except Exception as e:
+        print(f"Warning: Failed to load policy bundle: {e}")
+else:
+    print(f"Warning: Policy bundle not found at {POLICY_BUNDLE_PATH}")
+
 # ============== CONFIGURATION ==============
 
 # Load policy config
@@ -220,29 +253,107 @@ def get_policy_config() -> PolicyConfig:
     return PolicyConfig()
 
 def evaluate_policy(proposal: Any, context: Any, signals: Any) -> CGFDecision:
-    """Host-agnostic policy evaluation using data-driven config.
+    """Host-agnostic policy evaluation using Policy Engine v1.0.
     
     Key invariant: No branching on host_type!
     Only uses: action_params, risk_tier, capacity_signals
     """
+    decision_id = generate_id("dec")
+    
+    # P8: Use Policy Engine v1.0 if available
+    if HAS_POLICY_ENGINE and POLICY_BUNDLE is not None:
+        return _evaluate_with_policy_engine(proposal, context, signals, decision_id)
+    
+    # Fallback: use legacy policy v0.3 (for backward compatibility)
+    return _evaluate_legacy(proposal, context, signals, decision_id)
+
+
+def _evaluate_with_policy_engine(proposal: Any, context: Any, signals: Any, decision_id: str) -> CGFDecision:
+    """Evaluate using Policy Engine v1.0."""
+    # Build proposal dict
+    proposal_dict = {
+        "action_type": proposal.action_type.value if hasattr(proposal.action_type, 'value') else str(proposal.action_type),
+        "tool_name": proposal.action_params.get("tool_name", ""),
+        "size_bytes": proposal.action_params.get("size_bytes", 0),
+        "sensitivity_hint": proposal.action_params.get("sensitivity_hint", "medium"),
+        "risk_tier": proposal.risk_tier.value if hasattr(proposal.risk_tier, 'value') else str(proposal.risk_tier),
+        "estimated_cost": {"tokens": proposal.action_params.get("estimated_tokens", 0)}
+    }
+    
+    # Build context dict
+    context_dict = {
+        "recent_errors": context.recent_errors if hasattr(context, 'recent_errors') else 0,
+        "adapter_id": context.adapter_id if hasattr(context, 'adapter_id') else None
+    }
+    
+    # Build signals dict
+    signals_dict = {
+        "token_rate_60s": signals.token_rate if hasattr(signals, 'token_rate') else 0.0,
+        "error_rate": signals.error_rate if hasattr(signals, 'error_rate') else 0.0,
+        "avg_latency_ms": 0.0  # Placeholder
+    }
+    
+    # Evaluate with policy engine
+    result = evaluate(proposal_dict, context_dict, signals_dict, POLICY_BUNDLE)
+    
+    # Convert policy DecisionType to schema DecisionType
+    decision_type_map = {
+        PolicyDecisionType.ALLOW: DecisionType.ALLOW,
+        PolicyDecisionType.BLOCK: DecisionType.BLOCK,
+        PolicyDecisionType.CONSTRAIN: DecisionType.CONSTRAIN,
+        PolicyDecisionType.DEFER: DecisionType.DEFER,
+        PolicyDecisionType.AUDIT: DecisionType.AUDIT,
+    }
+    
+    # Build constraint if needed
+    constraint = None
+    if result.constraint:
+        # Resolve template values in params
+        params = result.constraint.params.copy()
+        if "target_namespace" in params and params["target_namespace"] == "_quarantine_":
+            params["target_namespace"] = f"_quarantine_{datetime.now().timestamp()}"
+        if "source_namespace" in params and params["source_namespace"] == "default":
+            params["source_namespace"] = proposal.action_params.get("namespace", "default")
+        
+        constraint = ConstraintConfig(
+            type=result.constraint.type,
+            params=params
+        )
+    
+    # Map reason code from matched rule
+    reason_code = result.matched_rule_ids[0].upper().replace("-", "_") if result.matched_rule_ids else "POLICY_MATCH"
+    
+    return CGFDecision(
+        decision_id=decision_id,
+        proposal_id=proposal.proposal_id,
+        decision=decision_type_map[result.decision],
+        confidence=result.decision_confidence,
+        justification=result.explanation_text[:200] if len(result.explanation_text) > 200 else result.explanation_text,
+        reason_code=reason_code,
+        constraint=constraint,
+        # P8: New fields for explainability
+        policy_version=POLICY_BUNDLE.policy_version,
+        matched_rule_ids=result.matched_rule_ids,
+        explanation_text=result.explanation_text
+    )
+
+
+def _evaluate_legacy(proposal: Any, context: Any, signals: Any, decision_id: str) -> CGFDecision:
+    """Legacy v0.3 policy evaluation (fallback)."""
     policy = get_policy_config()
     
     action_type = proposal.action_type
     action_params = proposal.action_params
     risk_tier = proposal.risk_tier
     
-    # Extract common fields that policy can reason about
     tool_name = action_params.get("tool_name", "")
     size_bytes = action_params.get("size_bytes", 0)
     sensitivity_hint = action_params.get("sensitivity_hint", "medium")
-    side_effects = action_params.get("side_effects_hint", [])
     
-    decision_id = generate_id("dec")
     confidence_threshold = policy.confidence_thresholds.get(risk_tier, 0.6)
+    default_confidence = 0.85
     
-    # === POLICY RULES (data-driven) ===
-    
-    # Rule 1: Denylist check (generic - applies to any action with tool_name)
+    # Rule 1: Denylist check
     if tool_name in policy.tool_denylist:
         return CGFDecision(
             decision_id=decision_id,
@@ -271,25 +382,19 @@ def evaluate_policy(proposal: Any, context: Any, signals: Any) -> CGFDecision:
             )
         )
     
-    # Rule 3: High sensitivity with insufficient confidence
-    if sensitivity_hint == "high":
-        # Default confidence for new proposals
-        default_confidence = 0.85
-        if default_confidence < confidence_threshold:
-            return CGFDecision(
-                decision_id=decision_id,
-                proposal_id=proposal.proposal_id,
-                decision=DecisionType.CONSTRAIN,
-                confidence=default_confidence,
-                justification=f"High sensitivity with insufficient confidence (< {confidence_threshold})",
-                reason_code="HIGH_SENSITIVITY_LOW_CONFIDENCE",
-                constraint=ConstraintConfig(
-                    type="quarantine_namespace",
-                    params={}
-                )
-            )
+    # Rule 3: High sensitivity
+    if sensitivity_hint == "high" and default_confidence < confidence_threshold:
+        return CGFDecision(
+            decision_id=decision_id,
+            proposal_id=proposal.proposal_id,
+            decision=DecisionType.CONSTRAIN,
+            confidence=default_confidence,
+            justification=f"High sensitivity with insufficient confidence (< {confidence_threshold})",
+            reason_code="HIGH_SENSITIVITY_LOW_CONFIDENCE",
+            constraint=ConstraintConfig(type="quarantine_namespace", params={})
+        )
     
-    # Rule 4: Risk tier with errors
+    # Rule 4: High risk with errors
     if risk_tier == RiskTier.HIGH and context.recent_errors > 3:
         return CGFDecision(
             decision_id=decision_id,
@@ -300,7 +405,7 @@ def evaluate_policy(proposal: Any, context: Any, signals: Any) -> CGFDecision:
             reason_code="HIGH_RISK_WITH_ERRORS"
         )
     
-    # Default: ALLOW with baseline confidence
+    # Default: ALLOW
     return CGFDecision(
         decision_id=decision_id,
         proposal_id=proposal.proposal_id,
@@ -585,9 +690,11 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.environ.get("CGF_PORT", "8080"))
     print("=" * 60)
     print(f"CGF Server v0.3")
     print(f"Schema: {SCHEMA_VERSION if HAS_V03 else '0.2.0'}")
     print(f"Policy: {POLICY_DATA.get('policy_version', 'default')}")
+    print(f"Port: {port}")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=port)

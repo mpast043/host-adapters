@@ -58,8 +58,12 @@ echo "[2/5] Checking CGF server..."
 CGF_PID=""
 CGF_WAS_RUNNING=0
 
+# CGF endpoint configuration
+CGF_PORT="${CGF_PORT:-8080}"
+CGF_BASE_URL="http://127.0.0.1:${CGF_PORT}"
+
 check_cgf_health() {
-    curl -s http://127.0.0.1:8080/health > /dev/null 2>&1 || curl -s http://127.0.0.1:8080/docs > /dev/null 2>&1
+    curl -s "${CGF_BASE_URL}/health" > /dev/null 2>&1 || curl -s "${CGF_BASE_URL}/docs" > /dev/null 2>&1
 }
 
 if check_cgf_health; then
@@ -95,12 +99,12 @@ RETRY_COUNT=0
 CGF_READY=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://127.0.0.1:8080/health > /dev/null 2>&1; then
+    if curl -s "${CGF_BASE_URL}/health" > /dev/null 2>&1; then
         CGF_READY=1
         break
     fi
     # Also check /docs as fallback
-    if curl -s http://127.0.0.1:8080/docs > /dev/null 2>&1; then
+    if curl -s "${CGF_BASE_URL}/docs" > /dev/null 2>&1; then
         CGF_READY=1
         break
     fi
@@ -113,7 +117,7 @@ if [ $CGF_READY -eq 0 ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ CGF server ready (http://127.0.0.1:8080)${NC}"
+echo -e "${GREEN}✓ CGF server ready (${CGF_BASE_URL})${NC}"
 echo ""
 
 # Run pytest

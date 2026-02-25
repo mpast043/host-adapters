@@ -525,6 +525,7 @@ class LangGraphAdapter(HostAdapter):
                             {
                                 "adapter_id": self.adapter_id,
                                 "host_type": "langgraph",
+                                "version": "0.3.0",  # P8: Added required version field
                                 "fail_mode_table_cached": len(self.fail_mode_table) > 0
                             }
                         )
