@@ -51,3 +51,8 @@ cgf_data/
 langgraph_cgf_data/
 openclaw_adapter_data/
 outputs/
+outputs/framework_run_*/
+**/results/
+**/.venv/
+**/**pycache**/
+**/*.pyc
