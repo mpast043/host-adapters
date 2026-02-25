@@ -1,0 +1,17 @@
+{
+  "claim_id": "claim-001",
+  "claim_title": "Spectral Dimension as Capacity-Limited Effective Geometry",
+  "verdict": "SUPPORTED",
+  "falsifier_results": {
+    "falsifier_1.1": {
+      "passed": true,
+      "message": "All 7 configs within 25% of expected \u03b2=0.683"
+    },
+    "falsifier_1.2": {
+      "passed": true,
+      "message": "3/7 high-cap configs show plateau-like d_eff tail"
+    }
+  },
+  "sample_count": 30,
+  "seed": 42
+}
