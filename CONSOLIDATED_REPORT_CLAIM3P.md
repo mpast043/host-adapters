@@ -1,9 +1,26 @@
 # Claim 3P Physical Hamiltonian Convergence Test
 ## Consolidated Report — 2026-02-25
 
+**⚠️ ERRATA: Hamiltonian Convention Bug Identified** — See Section 6 for critical corrections
+
 **Framework**: FRAMEWORK_SPEC_v0.2.1  
 **Runner**: exp3_claim3_physical_convergence_runner_v2.py  
-**Commit**: ac4432a
+**Commit**: ac4432a (L=8), 9720dfa (L=16)
+
+---
+
+## ⚠️ Critical Notice: Invalid Comparison
+
+**The L=8 and L=16 results use INCONSISTENT Hamiltonian conventions.**
+
+| System | Commit | ED Method | E₀ (L=8) |
+|--------|--------|-----------|----------|
+| Ising L=8 | `ac4432a` | Dense manual builder | -9.838 |
+| Ising L=16 | `9720dfa` | Sparse quimb | -8.48 |
+
+The L=8 results reported below use a **different physical Hamiltonian** than L=16. Cross-scale comparison is **meaningless** until L=8 is re-run with the sparse quimb implementation.
+
+**Status**: L=8 results marked as INVALID pending re-run with corrected Hamiltonian.
 
 ---
 
@@ -216,5 +233,72 @@ Local (not committed, outputs/ ignored):
 
 ---
 
-*Updated: 2026-02-25 18:20 UTC*  
-*Runner: experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py*
+## 6. ERRATA: Hamiltonian Convention Bug (2026-02-25 21:05)
+
+### Discovery
+During post-experiment verification, a critical inconsistency was discovered between the ED implementations used for L=8 vs L=16.
+
+### Root Cause
+
+| Version | Commit | ED Implementation | Ising L=8 E₀ |
+|---------|--------|-------------------|--------------|
+| v2.0 | `ac4432a` | Dense manual builder | **-9.838** |
+| v2.1 | `9720dfa` | Sparse quimb (`qu.ham_ising`) | **-4.221** |
+
+The manual builder in v2.0 implemented:
+```python
+H = -j * ZZ - h * X  # Local terms
+```
+
+While quimb `v0.2.1` implements (confirmed via source inspection):
+```python
+H = +j * ZZ + h * X  # Different sign convention
+```
+
+### Verification
+
+```python
+# Manual builder (ac4432a)
+H_manual = build_ising_hamiltonian(L=8, j=1.0, h=1.0)  # E0 = -9.84
+
+# Quimb builder (9720dfa)
+H_quimb = qu.ham_ising(8, jz=1.0, bx=1.0, sparse=True)  # E0 = -4.22
+
+Difference: 5.62 (factor of 2.3×)
+```
+
+### Impact Assessment
+
+| Result | Validity | Explanation |
+|--------|----------|-------------|
+| L=8 Ising (reported) | **INVALID** | Wrong physical Hamiltonian |
+| L=8 Heisenberg (reported) | **INVALID** | Same issue — needs verification |
+| L=16 Ising | **VALID** | Uses correct quimb convention |
+| Cross-scale comparison | **INVALID** | Different physics → no comparison possible |
+
+### Corrective Actions Required
+
+- [ ] Re-run L=8 Ising with commit `9720dfa` (sparse quimb ED)
+- [ ] Re-run L=8 Heisenberg with commit `9720dfa` 
+- [ ] Re-run L=16 Heisenberg (if desired)
+- [ ] Archive incorrect L=8 results with clear labeling
+- [ ] Re-evaluate Claim 3P verdicts with consistent Hamiltonian
+- [ ] Add explicit Hamiltonian validation test to runner
+
+### Technical Lesson
+**Never assume library conventions match manual implementations.** Always verify ground truth energy against known analytical results or cross-validate implementations.
+
+### Updated Reference Values (Corrected)
+
+| System | Model | Correct E₀ | Correct S_ref |
+|--------|-------|------------|---------------|
+| L=8 | Ising | -4.221 | 0.089 |
+| L=16 | Ising | -8.475 | 0.089 |
+
+The reported L=8 values (E₀=-10.02, S_ref=0.357) are **incorrect** for the stated Hamiltonian parameters (j=1.0, h=1.0).
+
+---
+
+*Updated: 2026-02-25 21:05 EST*  
+*Runner: experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py*  
+*Bug Discovered: 2026-02-25 20:45 EST*
