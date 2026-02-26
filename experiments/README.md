@@ -1,78 +1,155 @@
-# Claim 3 Experiments
+# Experiments: MERA Capacity-Governed Systems
 
-FRAMEWORK_SPEC_v0.2 compliant experiment runners for Claim 3: MERA entanglement scaling with bond dimension χ.
+This directory contains experimental validation code for tensor network-based capacity allocation systems.
 
-## Runners
+## Claims Overview
 
-| File | Mode | Purpose | Dependencies |
-|------|------|---------|--------------|
-| `exp3_claim3_quimb_runner.py` | Option A | Full MERA tensor network via quimb | quimb, cotengra, torch |
-| `exp3_claim3_optionB_runner.py` | Option A/B | Simplified entropy generator + Falsifier 3.5 | numpy only |
+| Claim | Description | Status | Key Script |
+|-------|-------------|--------|------------|
+| 3A | Entanglement-max saturation | SUPPORTED | `exp3_claim3_entanglement_max_mincut_runner.py` |
+| 3B | Windowed regime detection | **REJECTED** | `exp3_claim3_entanglement_max_mincut_runner.py` |
+| 3P | Physical Hamiltonian convergence | **PARTIAL** | `exp3_claim3_physical_convergence_runner_v2.py` |
 
-### Choosing a Runner
+## Quick Start
 
-**Use `quimb_runner` when:**
-- You need physically accurate MERA entanglement entropy
-- You want to test actual tensor network contraction
-- You have time for slower execution
+### Claim 3P: Physical Hamiltonian Convergence Test
 
-**Use `optionB_runner` when:**
-- You need fast iteration
-- You're testing partition variation (Falsifier 3.5)
-- You want deterministic synthetic data
-
-## Usage
+Run MERA variational optimization against Exact Diagonalization ground states:
 
 ```bash
-# Install dependencies
-pip install -r requirements-exp3.txt
+# Activate environment
+source .venv/bin/activate
 
-# Run quimb-based experiment (Option A)
-python experiments/claim3/exp3_claim3_quimb_runner.py \
-  --L 16 \
-  --A_sites 8 \
-  --chi_sweep 2,4,8,16,32 \
-  --seeds_per_chi 7 \
-  --state identity
+# Run Ising L=8
+python experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py \
+    --model ising_open \
+    --L 8 \
+    --A 4 \
+    --chi 2 3 4 6 8 12 16 \
+    --steps 120 \
+    --restarts 3
 
-# Run optionB experiment (includes partition variation)
-python experiments/claim3/exp3_claim3_optionB_runner.py \
-  --num_sites 64 \
-  --subsystem_sizes 32,16,8,4 \
-  --chi_sweep 2,4,6,8,12,16,24,32 \
-  --seeds_per_chi 7
+# Run Heisenberg L=8
+python experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py \
+    --model heisenberg_open \
+    --L 8 \
+    --A 4 \
+    --chi 2 3 4 6 8 12 16 \
+    --steps 150 \
+    --restarts 3
+
+# Run Ising L=16 (requires sparse ED)
+python experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py \
+    --model ising_open \
+    --L 16 \
+    --A 8 \
+    --chi 2 3 4 6 8 12 16 \
+    --steps 120 \
+    --restarts 3
 ```
 
-## Outputs
+### Claim 3A/3B: Entanglement-max Min-cut
 
-All runners write to: `outputs/<experiment_name>/<run_id>/`
+```bash
+python experiments/claim3/exp3_claim3_entanglement_max_mincut_runner.py \
+    --L 16 --chi 2 4 6 8
+```
 
-| Artifact | Description |
-|----------|-------------|
-| `manifest.json` | Run metadata, versions, scope |
-| `raw_entropy.csv` | Raw S(χ, seed, partition) data |
-| `fits.json` | Model parameters, AIC/BIC |
-| `bound_checks.json` | K_cut, bound, margin per point |
-| `verdict.json` | FINAL: SUPPORTED / INCONCLUSIVE / REJECTED |
+## Important Scripts
 
-## Falsifier Coverage
+### exp3_claim3_physical_convergence_runner_v2.py
 
-| Falsifier | quimb_runner | optionB_runner |
-|-----------|--------------|----------------|
-| 3.1 Monotonicity | ✅ | ✅ |
-| 3.2 Replicate robustness (CV≤10%) | ✅ | ✅ |
-| 3.3 Model selection (ΔAIC/BIC≥10) | ✅ | ✅ |
-| 3.4 Bound validity (S≤K·logχ) | ✅ | ✅ |
-| 3.5 Cut-size bridge | ❌ (Option A) | ✅ (Option B) |
+**Purpose:** MERA optimization with energy-based local terms (not fidelity-based)
 
-## K_cut Proxy Rule
+**Key Features:**
+- Sparse ED for L=16 (65K×65K Hilbert space feasible)
+- Energy optimization with `TNOptimizer` + L-BFGS-B
+- Schmidt decomposition for entropy (never materialize full ρ)
+- Multiple restarts per χ to avoid local minima
 
-Both runners use: `K_cut = 2 * (ceil(log2(A_size)) + 1)`, min 2
+**Arguments:**
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--model` | Model type: `ising_open`, `heisenberg_open` | (required) |
+| `--L` | System size (must be power of 2) | 8 |
+| `--A` | Partition size | L/2 |
+| `--chi` | Bond dimensions to sweep | 2 4 8 16 |
+| `--steps` | Optimization steps per restart | 120 |
+| `--restarts` | Number of random restarts per χ | 3 |
+| `--seed` | Base random seed | 42 |
+| `--output` | Output directory | `outputs/claim3P_final/` |
 
-This is an upper proxy for 1D binary MERA interval cut.
+**Outputs:**
+```
+outputs/claim3P_final/{model}_L{L}/{timestamp}_{hash}/
+├── manifest.json      # Run parameters and verdict
+├── metrics.json       # Best results per χ
+├── raw_results.csv    # All restart data
+├── verdict.json       # P3.1–P3.4 criterion evaluation
+└── plots/             # Convergence plots (if generated)
+```
 
-## Spec Compliance
+### exp3_claim3_entanglement_max_mincut_runner.py
 
-- Framework spec: v0.2
-- Deterministic seed policy: `seed = seed_base + chi_index*1000 + rep`
-- CPU runnable: Yes (quimb_runner may benefit from GPU for torch)
+**Purpose:** Min-cut capacity analysis for entanglement-max states
+
+**Models:** `entanglement_max`, `area_law`, `volume_law`
+
+## Technical Notes
+
+### Hamiltonian Convention (CRITICAL)
+
+⚠️ **Bug discovered 2026-02-25:** Two different ED implementations exist:
+
+| Commit | ED Method | Ising L=8 E₀ |
+|--------|-----------|--------------|
+| `ac4432a` | Dense manual builder | -9.84 (WRONG) |
+| `9720dfa` | Sparse quimb | -4.22 (CORRECT) |
+
+**Always use commit `9720dfa` or later** for consistent results.
+
+### MERA Constraints
+
+- System size `L` must be **power of 2** (8, 16, 32, ...)
+- Bond dimension `χ` controls expressivity vs computational cost
+- Optimization uses `isometrize(method="exp")` norm constraint
+
+### Sparse ED for L=16
+
+For L=16 (65,536-dimensional Hilbert space):
+
+```python
+# Dense: ~34GB RAM, OOM killed
+H_dense = np.linalg.eigh(H)  # DON'T DO THIS
+
+# Sparse: ~500MB RAM, seconds
+H_sparse = qu.ham_ising(L, jz=1.0, bx=1.0, sparse=True)
+E0 = scipy.sparse.eigsh(H_sparse, k=1, which='SA')[0]
+```
+
+Schmidt decomposition for entropy:
+```python
+# Never materialize full ρ
+psi_mat = psi0.reshape(2**A_size, 2**(L-A_size))
+U, s, Vh = np.linalg.svd(psi_mat, full_matrices=False)
+probs = s**2
+S = -np.sum(probs * np.log(probs))
+```
+
+## Results Summary
+
+See `CONSOLIDATED_REPORT_CLAIM3P.md` for full analysis.
+
+**Key Findings:**
+- L=8: MERA achieves perfect fidelity (1.0) but model selection favors log-linear
+- L=16 Ising: MERA insufficient at χ≤16 for critical systems (fidelity only 0.072)
+- Energy optimization converges even when fidelity remains poor
+
+## Citation
+
+If using these experiments, cite:
+```
+Capacity-Governed Systems Framework v0.2.1
+Claim 3P: Physical Hamiltonian Convergence Test
+Repository: github.com/mpast043/host-adapters
+```

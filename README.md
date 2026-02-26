@@ -20,6 +20,10 @@ CGF Host Adapters for OpenClaw, LangGraph, and other host systems.
 ├── server/                   # CGF Server
 │   ├── cgf_schemas_v03.py
 │   └── cgf_server_v03.py
+├── experiments/              # MERA/CGF capacity experiments
+│   ├── claim3/               # Claim 3P: Physical Hamiltonian Convergence
+│   ├── exp3_claim3_physical_convergence_runner_v2.py
+│   └── (see experiments/README.md)
 ├── tools/                    # Testing & validation tools
 │   ├── schema_lint.py
 │   ├── contract_compliance_tests.py
@@ -29,6 +33,7 @@ CGF Host Adapters for OpenClaw, LangGraph, and other host systems.
 ├── policy/                   # Policy configuration
 │   └── policy_config_v03.json
 ├── DEV.md                    # Developer guide
+├── CONSOLIDATED_REPORT_CLAIM3P.md  # MERA convergence study (⚠️ ERRATA in Section 6)
 ├── requirements.txt          # Python dependencies
 └── Makefile                  # Build automation
 ```
@@ -45,6 +50,19 @@ make test
 # Run lint
 make lint
 ```
+
+## Experiments: Claim 3P — Physical Hamiltonian Convergence
+
+The `experiments/claim3/` directory contains MERA variational optimization tests comparing tensor network approximations against Exact Diagonalization (ED) ground states.
+
+**Key Scripts:**
+- `exp3_claim3_physical_convergence_runner_v2.py` — Main runner for Ising/Heisenberg models
+- `exp3_claim3_entanglement_max_mincut_runner.py` — Entanglement-max state min-cut analysis
+
+**Documentation:**
+- `CONSOLIDATED_REPORT_CLAIM3P.md` — Full test results and analysis
+
+**⚠️ Important:** See Section 6 (ERRATA) in the consolidated report for a critical Hamiltonian convention bug that affects L=8 results.
 
 ## Schema Version
 
