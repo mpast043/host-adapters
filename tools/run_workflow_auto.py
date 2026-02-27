@@ -1,0 +1,1481 @@
+#!/usr/bin/env python3
+"""Deterministic WORKFLOW_AUTO orchestrator.
+
+Implements Steps 0-6 from WORKFLOW_AUTO.md with strict artifact paths,
+LOCAL_ONLY downscoping when compute MCP is unavailable, machine-readable
+event emission, and retention packaging.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import json
+import os
+import platform
+import re
+import shutil
+import socket
+import subprocess
+import tarfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+
+PORT_ROTATION = [8080, 18080, 28080, 38080]
+FAILURE_CODES = {
+    "LINT_FAILURE",
+    "TEST_FAILURE",
+    "CONTRACT_FAILURE",
+    "RUNTIME_FAILURE",
+    "SCIENCE_EVIDENCE_FAILURE",
+    "SELECTION_FAILURE",
+}
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def compact_ts() -> str:
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def write_json(path: Path, obj: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+
+
+def read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def find_latest_subdir(path: Path) -> Path | None:
+    if not path.exists() or not path.is_dir():
+        return None
+    children = [p for p in path.iterdir() if p.is_dir()]
+    if not children:
+        return None
+    return sorted(children, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+
+
+def tail_lines(path: Path, n: int = 200) -> str:
+    lines = read_text(path).splitlines()
+    return "\n".join(lines[-n:]) + ("\n" if lines else "")
+
+
+def http_health(endpoint: str, timeout_s: float = 2.0) -> tuple[bool, int | None, str]:
+    url = f"{endpoint.rstrip('/')}/health"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+            body = resp.read().decode("utf-8", errors="replace")
+            return True, resp.status, body
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        # A reachable server that lacks /health may return 404; treat as alive.
+        if exc.code == 404:
+            return True, exc.code, body
+        return False, exc.code, body
+    except Exception as exc:  # noqa: BLE001
+        return False, None, str(exc)
+
+
+def get_python(repo_root: Path) -> str:
+    venv_py = repo_root / ".venv" / "bin" / "python"
+    return str(venv_py) if venv_py.exists() else "python3"
+
+
+def is_port_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.3)
+        return sock.connect_ex(("127.0.0.1", port)) != 0
+
+
+def _event_writer(path: Path, event: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event) + "\n")
+
+
+def record_event(events_path: Path, step: str, event_type: str, payload: dict[str, Any]) -> None:
+    _event_writer(
+        events_path,
+        {
+            "ts_utc": utc_now(),
+            "step": step,
+            "event_type": event_type,
+            **payload,
+        },
+    )
+
+
+def run_command(
+    *,
+    run_dir: Path,
+    manifest: dict[str, Any],
+    events_path: Path,
+    step: str,
+    name: str,
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    logs_dir = run_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / f"{name}.txt"
+
+    started = time.time()
+    started_iso = utc_now()
+    rc = 1
+
+    record_event(
+        events_path,
+        step,
+        "command_started",
+        {
+            "name": name,
+            "command": " ".join(command),
+            "cwd": str(cwd),
+            "log_path": str(log_path.relative_to(run_dir)),
+        },
+    )
+
+    with log_path.open("w", encoding="utf-8") as fout:
+        proc = subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            stdout=fout,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        rc = proc.returncode
+
+    ended = time.time()
+    ended_iso = utc_now()
+
+    entry = {
+        "name": name,
+        "step": step,
+        "command": command,
+        "cwd": str(cwd),
+        "exit_code": rc,
+        "started_utc": started_iso,
+        "ended_utc": ended_iso,
+        "duration_s": round(ended - started, 3),
+        "log_path": str(log_path.relative_to(run_dir)),
+    }
+    manifest.setdefault("commands", []).append(entry)
+
+    if rc != 0:
+        tail_path = logs_dir / f"{name}_tail200.txt"
+        tail_path.write_text(tail_lines(log_path, n=200), encoding="utf-8")
+        entry["tail200_path"] = str(tail_path.relative_to(run_dir))
+
+    record_event(
+        events_path,
+        step,
+        "command_finished",
+        {
+            "name": name,
+            "exit_code": rc,
+            "duration_s": round(ended - started, 3),
+            "log_path": str(log_path.relative_to(run_dir)),
+        },
+    )
+
+    return entry
+
+
+def parse_mcporter_targets(mcporter_list_text: str) -> tuple[str | None, str | None, list[str]]:
+    compute_target = None
+    docs_target = None
+    discovered: list[str] = []
+
+    for line in mcporter_list_text.splitlines():
+        l = line.strip()
+        if not l:
+            continue
+        if l.lower().startswith("name") or l.lower().startswith("---"):
+            continue
+
+        # Best effort: first token is often the server name.
+        token_match = re.match(r"^([A-Za-z0-9._-]+)", l)
+        if token_match:
+            token = token_match.group(1)
+            if token != "-":
+                discovered.append(token)
+
+        ll = l.lower()
+        online_like = any(word in ll for word in ["online", "connected", "healthy", "running"])
+        if not online_like:
+            continue
+
+        if compute_target is None and any(k in ll for k in ["compute", "cpu", "gpu", "executor"]):
+            compute_target = token_match.group(1) if token_match else l
+        if docs_target is None and any(k in ll for k in ["docs", "document", "notion", "drive", "pdf"]):
+            docs_target = token_match.group(1) if token_match else l
+
+    return compute_target, docs_target, sorted(set(discovered))
+
+
+def find_pdf(repo_root: Path, explicit_pdf: Path | None) -> Path | None:
+    if explicit_pdf and explicit_pdf.exists():
+        return explicit_pdf.resolve()
+
+    names = ["Framework with selection.pdf", "Framework with Selection.pdf"]
+    for name in names:
+        candidate = repo_root / name
+        if candidate.exists():
+            return candidate.resolve()
+
+    for folder in [repo_root / "docs", repo_root / "spec"]:
+        if not folder.exists():
+            continue
+        for name in names:
+            candidate = folder / name
+            if candidate.exists():
+                return candidate.resolve()
+
+    external_default = Path("/Users/meganpastore/Clawdbot/Repos/capacity-demo/Framework with selection.pdf")
+    if external_default.exists():
+        return external_default.resolve()
+
+    return None
+
+
+def locate_baseline_runners(repo_root: Path) -> dict[str, Path]:
+    candidates = {
+        "claim2": [
+            repo_root / "prototype/experiments/exp2_mera_tradeoff/exp2_mera_tradeoff.py",
+        ],
+        "claim3": [
+            repo_root / "experiments/claim3/exp3_claim3_optionB_runner.py",
+            repo_root / "experiments/claim3/exp3_claim3_entanglement_max_mincut_runner.py",
+        ],
+        "claim3p": [
+            repo_root / "experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py",
+        ],
+    }
+
+    resolved: dict[str, Path] = {}
+    for key, options in candidates.items():
+        hit = next((p for p in options if p.exists()), None)
+        if hit is None:
+            raise FileNotFoundError(f"Missing baseline runner for {key}; looked in: {options}")
+        resolved[key] = hit
+    return resolved
+
+
+def detect_science_verdict(artifact_path: Path) -> str:
+    verdict_file = artifact_path / "verdict.json"
+    if not verdict_file.exists():
+        return "NOT_RUN"
+    try:
+        verdict_obj = json.loads(verdict_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "NOT_RUN"
+
+    raw = str(verdict_obj.get("verdict", "")).upper().strip()
+    if raw in {"SUPPORTED", "PASS"}:
+        return "SUPPORTED"
+    if raw in {"REJECTED", "FAIL"}:
+        return "REJECTED"
+    if raw in {"INCONCLUSIVE", "PARTIAL", "NOT_SUPPORTED", "NEEDS_REVIEW"}:
+        return "INCONCLUSIVE"
+    return "NOT_RUN"
+
+
+def build_selection_outputs(
+    *,
+    run_dir: Path,
+    pdf_path: Path,
+    evidence_index: dict[str, Any],
+    contract_status: str,
+    science_status: str,
+    science_artifacts: dict[str, str],
+) -> tuple[str, list[dict[str, Any]]]:
+    selection_dir = run_dir / "results" / "selection"
+    selection_dir.mkdir(parents=True, exist_ok=True)
+
+    rows: list[dict[str, Any]] = []
+
+    contract_row = {
+        "claim_id": "CGR_CONTRACT_COMPLIANCE",
+        "status": "ACCEPTED" if contract_status in {"PASS", "LINT_DEBT"} else "REJECTED",
+        "rationale": "Contract + SDK validation status mapped from workflow contract checks.",
+        "witnesses": [
+            "results/contracts/contract_result.json",
+            "results/sdk_validation/sdk_validation_result.json",
+        ],
+    }
+    rows.append(contract_row)
+
+    claim3p_status = "UNDERDETERMINED"
+    if science_status == "REJECTED":
+        claim3p_status = "REJECTED"
+    elif science_status == "SUPPORTED":
+        claim3p_status = "ACCEPTED"
+
+    claim3p_row = {
+        "claim_id": "CLAIM_3P_PHYSICAL_CONVERGENCE",
+        "status": claim3p_status,
+        "rationale": "Mapped from Claim 3P baseline/exploration verdict artifacts.",
+        "witnesses": [
+            science_artifacts.get("claim3p_baseline", "results/science/baseline_summary.json"),
+            science_artifacts.get("campaign_report", "results/science/campaign/campaign_report.md"),
+        ],
+    }
+    if claim3p_row["status"] == "UNDERDETERMINED":
+        claim3p_row["next_test"] = "Run L=16 heisenberg_cyclic and ising_cyclic with >=3 seeds and compare ΔAIC/ΔBIC stability."
+    rows.append(claim3p_row)
+
+    rows.append(
+        {
+            "claim_id": "CLAIM_3_OPTION_B",
+            "status": "UNDERDETERMINED",
+            "rationale": "Option B evidence exists but physical interpretation remains limited to local numerical support.",
+            "witnesses": [
+                science_artifacts.get("claim3_baseline", "results/science/baseline_summary.json"),
+                "results/science/campaign/model_comparison.json",
+            ],
+            "next_test": "Add independent fit-family ablation and bootstrap confidence intervals for model ranking.",
+        }
+    )
+
+    # Keep at least one explicit claim tied directly to the proposal PDF.
+    rows.append(
+        {
+            "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
+            "status": "UNDERDETERMINED",
+            "rationale": "PDF is present and indexed, but strong external physical claims require independent external benchmarks.",
+            "witnesses": [
+                str(pdf_path),
+                "results/selection/evidence_index.json",
+            ],
+            "next_test": "Map each physical claim sentence to one executable test and one artifact-backed falsifier.",
+        }
+    )
+
+    selection_manifest = {
+        "generated_at_utc": utc_now(),
+        "pdf_source": str(pdf_path),
+        "entry_count": len(rows),
+        "statuses": ["ACCEPTED", "UNDERDETERMINED", "REJECTED"],
+        "required_fields": ["claim_id", "status", "rationale", "witnesses"],
+    }
+
+    report_lines = [
+        "# Selection Report",
+        "",
+        f"Source proposal: `{pdf_path}`",
+        "",
+        "| Claim | Status | Witnesses |",
+        "|---|---|---:|",
+    ]
+    for row in rows:
+        report_lines.append(f"| {row['claim_id']} | {row['status']} | {len(row['witnesses'])} |")
+    report_lines.append("")
+    report_lines.append("## Next Tests")
+    for row in rows:
+        if row.get("status") == "UNDERDETERMINED":
+            report_lines.append(f"- {row['claim_id']}: {row.get('next_test', 'TBD')}")
+
+    write_json(selection_dir / "evidence_index.json", evidence_index)
+    write_json(selection_dir / "selection_manifest.json", selection_manifest)
+    with (selection_dir / "ledger.jsonl").open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+    (selection_dir / "selection_report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+
+    if any(r["status"] == "REJECTED" for r in rows):
+        status = "FAIL"
+    elif any(r["status"] == "UNDERDETERMINED" for r in rows):
+        status = "UNDERDETERMINED"
+    else:
+        status = "PASS"
+
+    return status, rows
+
+
+def package_retention(run_dir: Path, repo_root: Path) -> dict[str, Any]:
+    run_id = run_dir.name
+    retained_dir = repo_root / "retained_runs"
+    retained_dir.mkdir(parents=True, exist_ok=True)
+
+    temp_archive = repo_root / "tmp" / f"retained_{run_id}.tar.gz"
+    temp_archive.parent.mkdir(parents=True, exist_ok=True)
+
+    with tarfile.open(temp_archive, "w:gz") as tar:
+        tar.add(run_dir, arcname=run_id)
+
+    local_archive = run_dir / f"retained_{run_id}.tar.gz"
+    shutil.copy2(temp_archive, local_archive)
+
+    retained_archive = retained_dir / local_archive.name
+    shutil.copy2(temp_archive, retained_archive)
+
+    size = local_archive.stat().st_size
+    retained_text = "\n".join(
+        [
+            f"archive_filename: {local_archive.name}",
+            f"archive_size_bytes: {size}",
+            f"retention_path: {retained_archive}",
+            f"timestamp_utc: {utc_now()}",
+            "remote_uri: N/A",
+        ]
+    )
+    (run_dir / "RETAINED.txt").write_text(retained_text + "\n", encoding="utf-8")
+
+    return {
+        "archive_filename": local_archive.name,
+        "archive_size_bytes": size,
+        "retention_path": str(retained_archive),
+        "timestamp_utc": utc_now(),
+        "remote_uri": None,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run WORKFLOW_AUTO orchestrator")
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
+    parser.add_argument("--run-id", type=str, default="")
+    parser.add_argument("--pdf-path", type=Path, default=None)
+    parser.add_argument("--max-minutes", type=int, default=120)
+    parser.add_argument("--max-runs", type=int, default=80)
+    parser.add_argument("--local-only-max-minutes", type=int, default=20)
+    parser.add_argument("--local-only-max-runs", type=int, default=10)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--skip-install", action="store_true")
+    parser.add_argument("--skip-lint", action="store_true")
+    parser.add_argument("--skip-tests", action="store_true")
+    parser.add_argument("--skip-science", action="store_true")
+    args = parser.parse_args()
+
+    repo_root = args.repo_root.resolve()
+    python_exe = get_python(repo_root)
+
+    run_id = args.run_id.strip() or f"RUN_{compact_ts()}"
+    run_dir = repo_root / run_id
+    logs_dir = run_dir / "logs"
+    results_dir = run_dir / "results"
+    tmp_dir = run_dir / "tmp"
+
+    for p in [logs_dir, results_dir, tmp_dir, results_dir / "contracts", results_dir / "sdk_validation", results_dir / "science" / "campaign", results_dir / "selection"]:
+        p.mkdir(parents=True, exist_ok=True)
+
+    events_path = logs_dir / "workflow_events.jsonl"
+
+    manifest: dict[str, Any] = {
+        "run_id": run_id,
+        "repo_root": str(repo_root),
+        "started_utc": utc_now(),
+        "host": {
+            "hostname": socket.gethostname(),
+            "os": platform.platform(),
+            "python": platform.python_version(),
+            "user": os.environ.get("USER", "unknown"),
+        },
+        "steps": {},
+        "commands": [],
+        "mcp_calls": [],
+        "failure_classification": None,
+        "failure_message": None,
+        "mcp_targets": {
+            "compute_target": None,
+            "docs_target": None,
+            "discovery_log": "logs/mcporter_list.txt",
+        },
+    }
+
+    stop_reason: str | None = None
+    stop_classification: str | None = None
+    lint_status = "PASS"
+    contract_status = "SKIPPED"
+    science_status = "NOT_RUN"
+    selection_status = "NOT_RUN"
+    retention_status = "NOT_RUN"
+    mode = "COMPLETE"
+
+    cgf_proc: subprocess.Popen[str] | None = None
+    cgf_endpoint = "http://127.0.0.1:8080"
+
+    try:
+        # Step 0: preflight and MCP discovery
+        step = "0"
+        manifest["steps"][step] = {"name": "Preflight and MCP discovery", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        preflight_cmds = [
+            ("env_uname", ["uname", "-a"]),
+            ("env_python_version", [python_exe, "--version"]),
+            ("env_pip_freeze", [python_exe, "-m", "pip", "freeze"]),
+            ("git_remote_v", ["git", "remote", "-v"]),
+            ("git_branch", ["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+            ("git_commit", ["git", "rev-parse", "--short", "HEAD"]),
+            ("git_status_porcelain", ["git", "status", "--porcelain"]),
+        ]
+        for name, cmd in preflight_cmds:
+            run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name=name,
+                command=cmd,
+                cwd=repo_root,
+            )
+
+        mcporter_cmd = run_command(
+            run_dir=run_dir,
+            manifest=manifest,
+            events_path=events_path,
+            step=step,
+            name="mcporter_cmd_check",
+            command=["sh", "-lc", "command -v mcporter"],
+            cwd=repo_root,
+        )
+        if mcporter_cmd["exit_code"] != 0:
+            stop_reason = "mcporter not found; cannot satisfy Step 0.4 discovery"
+            stop_classification = "RUNTIME_FAILURE"
+            mode = "STOPPED"
+        else:
+            mcporter_list = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="mcporter_list",
+                command=["mcporter", "list"],
+                cwd=repo_root,
+            )
+            manifest["mcp_calls"].append(
+                {
+                    "tool": "mcporter list",
+                    "server_target": "local",
+                    "request_summary": "discover available MCP servers",
+                    "response_pointer": mcporter_list["log_path"],
+                }
+            )
+
+            mcporter_text = read_text(run_dir / mcporter_list["log_path"])
+            compute_target, docs_target, discovered = parse_mcporter_targets(mcporter_text)
+            manifest["mcp_targets"] = {
+                "compute_target": compute_target,
+                "docs_target": docs_target,
+                "discovery_log": "logs/mcporter_list.txt",
+                "servers": discovered,
+            }
+
+            if compute_target is None:
+                mode = "LOCAL_ONLY"
+                args.max_minutes = args.local_only_max_minutes
+                args.max_runs = args.local_only_max_runs
+
+        manifest["steps"][step]["status"] = "PASS" if stop_reason is None else "FAIL"
+        record_event(events_path, step, "step_finished", {"status": manifest["steps"][step]["status"]})
+
+        if stop_reason:
+            raise RuntimeError(stop_reason)
+
+        # Step 1: repo verification
+        step = "1"
+        manifest["steps"][step] = {"name": "Repo verification", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        if not args.skip_install:
+            install = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="pip_install_requirements",
+                command=[python_exe, "-m", "pip", "install", "-r", "requirements.txt"],
+                cwd=repo_root,
+            )
+            if install["exit_code"] != 0:
+                stop_reason = "Dependency installation failed"
+                stop_classification = "RUNTIME_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+        if not args.skip_lint:
+            lint = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="make_lint",
+                command=["make", "lint"],
+                cwd=repo_root,
+            )
+            if lint["exit_code"] != 0:
+                # Safe autofix once.
+                run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="ruff_fix",
+                    command=["ruff", "check", ".", "--fix"],
+                    cwd=repo_root,
+                )
+                run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="ruff_format",
+                    command=["ruff", "format", "."],
+                    cwd=repo_root,
+                )
+                lint_rerun = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="make_lint_rerun",
+                    command=["make", "lint"],
+                    cwd=repo_root,
+                )
+                if lint_rerun["exit_code"] != 0:
+                    lint_status = "LINT_DEBT"
+
+        if not args.skip_tests:
+            test_env = os.environ.copy()
+            test_env["ALLOW_CGF_DOWN"] = "1"
+            tests = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="make_test",
+                command=["make", "test"],
+                cwd=repo_root,
+                env=test_env,
+            )
+            if tests["exit_code"] != 0:
+                stop_reason = "Step 1 tests failed"
+                stop_classification = "TEST_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+        manifest["steps"][step]["status"] = "PASS"
+        record_event(events_path, step, "step_finished", {"status": "PASS", "lint_status": lint_status})
+
+        # Step 2: CGF bring-up + contract verification
+        step = "2"
+        manifest["steps"][step] = {"name": "CGF contract verification", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        server_started = False
+        for port in PORT_ROTATION:
+            if not is_port_available(port):
+                continue
+            log_path = logs_dir / f"cgf_server_{port}.txt"
+            env = os.environ.copy()
+            env["CGF_PORT"] = str(port)
+            env["PYTHONUNBUFFERED"] = "1"
+            with log_path.open("w", encoding="utf-8") as fout:
+                cgf_proc = subprocess.Popen(  # noqa: S603
+                    [python_exe, "server/cgf_server_v03.py"],
+                    cwd=str(repo_root),
+                    env=env,
+                    stdout=fout,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+            cgf_endpoint = f"http://127.0.0.1:{port}"
+            for _ in range(16):
+                if cgf_proc.poll() is not None:
+                    break
+                ok, _, _ = http_health(cgf_endpoint, timeout_s=0.8)
+                if ok and cgf_proc.poll() is None:
+                    server_started = True
+                    break
+                time.sleep(0.5)
+            if server_started:
+                break
+            if cgf_proc and cgf_proc.poll() is None:
+                cgf_proc.terminate()
+                cgf_proc.wait(timeout=5)
+                cgf_proc = None
+
+        if not server_started:
+            stop_reason = "CGF server failed to start on any allowed port"
+            stop_classification = "RUNTIME_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        manifest["cgf"] = {"endpoint": cgf_endpoint}
+        health_ok, status_code, health_body = http_health(cgf_endpoint, timeout_s=2.0)
+        write_json(
+            results_dir / "cgf_health.json",
+            {
+                "endpoint": cgf_endpoint,
+                "ok": health_ok,
+                "status_code": status_code,
+                "body": health_body,
+                "checked_at_utc": utc_now(),
+            },
+        )
+        if not health_ok:
+            stop_reason = "CGF health check failed"
+            stop_classification = "RUNTIME_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        contract_cmd = [python_exe, "-m", "pytest", "-v", "tools/contract_compliance_tests.py"]
+        # Keep run_contract_suite.sh as a preferred command only when we are on the default
+        # endpoint; the shell wrapper currently hard-codes 8080 checks.
+        if cgf_endpoint.endswith(":8080") and (repo_root / "tools/run_contract_suite.sh").exists():
+            contract_cmd = ["bash", "tools/run_contract_suite.sh"]
+
+        contract_env = os.environ.copy()
+        contract_env["CGF_ENDPOINT"] = cgf_endpoint
+        contract = run_command(
+            run_dir=run_dir,
+            manifest=manifest,
+            events_path=events_path,
+            step=step,
+            name="contract_suite",
+            command=contract_cmd,
+            cwd=repo_root,
+            env=contract_env,
+        )
+
+        write_json(
+            results_dir / "contracts" / "contract_result.json",
+            {
+                "command": contract_cmd,
+                "exit_code": contract["exit_code"],
+                "log_path": contract["log_path"],
+                "endpoint": cgf_endpoint,
+                "generated_at_utc": utc_now(),
+            },
+        )
+
+        if contract["exit_code"] != 0:
+            contract_status = "FAIL"
+            stop_reason = "Contract suite failed"
+            stop_classification = "CONTRACT_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        sdk = run_command(
+            run_dir=run_dir,
+            manifest=manifest,
+            events_path=events_path,
+            step=step,
+            name="validate_sdk_artifacts",
+            command=[python_exe, "tools/validate_sdk_artifacts.py"],
+            cwd=repo_root,
+        )
+
+        write_json(
+            results_dir / "sdk_validation" / "sdk_validation_result.json",
+            {
+                "command": [python_exe, "tools/validate_sdk_artifacts.py"],
+                "exit_code": sdk["exit_code"],
+                "log_path": sdk["log_path"],
+                "generated_at_utc": utc_now(),
+            },
+        )
+
+        if sdk["exit_code"] != 0:
+            contract_status = "FAIL"
+            stop_reason = "SDK validation failed"
+            stop_classification = "CONTRACT_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        contract_status = "PASS" if lint_status == "PASS" else "LINT_DEBT"
+        manifest["steps"][step]["status"] = "PASS"
+        record_event(events_path, step, "step_finished", {"status": "PASS"})
+
+        # Step 3: baseline science
+        step = "3"
+        manifest["steps"][step] = {"name": "Scientific baseline suite", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        runners = locate_baseline_runners(repo_root)
+        run_plan = {
+            "generated_at_utc": utc_now(),
+            "baseline_tests": [
+                {"test_id": "claim2_tradeoff_baseline", "runner": str(runners["claim2"]), "seed": 123},
+                {"test_id": "claim3_optionb_baseline", "runner": str(runners["claim3"]), "seed": args.seed},
+                {"test_id": "claim3p_ising_open_baseline", "runner": str(runners["claim3p"]), "seed": args.seed},
+            ],
+            "exploration_tests": [],
+            "budgets": {
+                "max_minutes": args.max_minutes,
+                "max_runs": args.max_runs,
+                "max_failures": 10,
+                "seeds": 3,
+                "mode": mode,
+            },
+            "stop_conditions": {
+                "hard_failures": ["TEST_FAILURE", "CONTRACT_FAILURE", "RUNTIME_FAILURE", "SELECTION_FAILURE"],
+                "science_evidence_failure_is_nonblocking": True,
+            },
+        }
+        write_json(results_dir / "science" / "run_plan.json", run_plan)
+
+        baseline_outputs = {
+            "claim2_baseline": results_dir / "science" / "claim2_baseline",
+            "claim3_baseline": results_dir / "science" / "claim3_baseline",
+            "claim3p_ising_open": results_dir / "science" / "claim3p_ising_open",
+        }
+
+        baseline_commands = [
+            (
+                "science_claim2_baseline",
+                [python_exe, str(runners["claim2"]), "--output", str(baseline_outputs["claim2_baseline"]), "--seed", "123"],
+                "claim2_baseline",
+            ),
+            (
+                "science_claim3_optionb_baseline",
+                [
+                    python_exe,
+                    str(runners["claim3"]),
+                    "--output_root",
+                    str(results_dir / "science"),
+                    "--experiment_name",
+                    "claim3_baseline",
+                    "--chi_sweep",
+                    "2,4,8",
+                    "--seeds_per_chi",
+                    "3",
+                    "--num_sites",
+                    "32",
+                    "--subsystem_sizes",
+                    "16,8,4",
+                    "--seed_base",
+                    str(args.seed),
+                ],
+                "claim3_baseline",
+            ),
+            (
+                "science_claim3p_ising_open",
+                [
+                    python_exe,
+                    str(runners["claim3p"]),
+                    "--L",
+                    "8",
+                    "--A_size",
+                    "4",
+                    "--model",
+                    "ising_open",
+                    "--chi_sweep",
+                    "2,4",
+                    "--restarts_per_chi",
+                    "1",
+                    "--fit_steps",
+                    "30",
+                    "--seed",
+                    str(args.seed),
+                    "--output",
+                    str(baseline_outputs["claim3p_ising_open"]),
+                ],
+                "claim3p_ising_open",
+            ),
+        ]
+
+        baseline_summary: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
+
+        if args.skip_science:
+            baseline_summary["tests"].append({"test_id": "ALL_BASELINE", "status": "NOT_RUN", "reason": "--skip-science set"})
+            science_status = "NOT_RUN"
+        else:
+            for name, cmd, key in baseline_commands:
+                entry = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name=name,
+                    command=cmd,
+                    cwd=repo_root,
+                )
+
+                artifact_root = baseline_outputs[key]
+                artifact_path = find_latest_subdir(artifact_root) or artifact_root
+                verdict = detect_science_verdict(artifact_path)
+
+                baseline_summary["tests"].append(
+                    {
+                        "test_id": key,
+                        "command": cmd,
+                        "exit_code": entry["exit_code"],
+                        "log_path": entry["log_path"],
+                        "artifact_path": str(artifact_path.relative_to(run_dir)),
+                        "verdict": verdict,
+                    }
+                )
+
+            verdicts = [t["verdict"] for t in baseline_summary["tests"]]
+            if any(v == "REJECTED" for v in verdicts):
+                science_status = "REJECTED"
+            elif any(v == "SUPPORTED" for v in verdicts):
+                science_status = "SUPPORTED"
+            elif any(v == "INCONCLUSIVE" for v in verdicts):
+                science_status = "PARTIAL"
+            else:
+                science_status = "NOT_RUN"
+
+        write_json(results_dir / "science" / "baseline_summary.json", baseline_summary)
+        manifest["steps"][step]["status"] = "PASS"
+        record_event(events_path, step, "step_finished", {"status": "PASS", "science_status": science_status})
+
+        # Step 4: exploration
+        step = "4"
+        manifest["steps"][step] = {"name": "Exploration campaign", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        proposals = [
+            {
+                "test_id": "claim3p_ising_cyclic_l8",
+                "target_claims": ["Claim_3P"],
+                "hypothesis": "Boundary conditions change model-selection stability at fixed L=8.",
+                "metrics": ["delta_aic", "delta_bic", "fidelity"],
+                "falsifier": "P3.4 remains rejected across boundary condition.",
+                "estimated_minutes": 6,
+                "placement": "local" if mode == "LOCAL_ONLY" else "mcp_compute",
+                "command": "exp3_claim3_physical_convergence_runner_v2.py --model ising_cyclic",
+            },
+            {
+                "test_id": "claim3p_heisenberg_cyclic_l8",
+                "target_claims": ["Claim_3P"],
+                "hypothesis": "Heisenberg cyclic branch should execute and provide independent model matrix evidence.",
+                "metrics": ["delta_aic", "delta_bic", "fidelity"],
+                "falsifier": "argparse or execution failure for heisenberg_cyclic.",
+                "estimated_minutes": 8,
+                "placement": "local" if mode == "LOCAL_ONLY" else "mcp_compute",
+                "command": "exp3_claim3_physical_convergence_runner_v2.py --model heisenberg_cyclic",
+            },
+            {
+                "test_id": "claim3_optionb_regime_check",
+                "target_claims": ["Claim_3"],
+                "hypothesis": "Cross-partition run can reduce ambiguity in regime classification.",
+                "metrics": ["winner_by_aic", "bridge_r"],
+                "falsifier": "Model ranking remains unstable under additional seeds.",
+                "estimated_minutes": 5,
+                "placement": "local",
+                "command": "exp3_claim3_optionB_runner.py with focused chi grid",
+            },
+            {
+                "test_id": "claim2_seed_perturbation",
+                "target_claims": ["Claim_2"],
+                "hypothesis": "Capacity savings signal remains under changed seed.",
+                "metrics": ["savings_ratio"],
+                "falsifier": "Savings ratio collapses near 1.0.",
+                "estimated_minutes": 3,
+                "placement": "local",
+                "command": "exp2_mera_tradeoff.py --seed 321",
+            },
+            {
+                "test_id": "claim3p_l16_gate",
+                "target_claims": ["Claim_3P"],
+                "hypothesis": "L=16 run sharpens asymptotic trend classification.",
+                "metrics": ["delta_aic", "delta_bic"],
+                "falsifier": "No trend improvement at larger L.",
+                "estimated_minutes": 15,
+                "placement": "mcp_compute",
+                "command": "exp3_claim3_physical_convergence_runner_v2.py --L 16",
+            },
+        ]
+        write_json(results_dir / "science" / "exploration_proposals.json", {"generated_at_utc": utc_now(), "proposals": proposals})
+
+        selected: list[dict[str, Any]] = []
+        remaining_minutes = args.max_minutes
+        for p in proposals:
+            if len(selected) >= args.max_runs:
+                break
+            if p["estimated_minutes"] <= remaining_minutes:
+                selected.append(p)
+                remaining_minutes -= int(p["estimated_minutes"])
+            if mode == "LOCAL_ONLY" and len(selected) >= 2:
+                break
+
+        write_json(
+            results_dir / "science" / "exploration_selected.json",
+            {
+                "generated_at_utc": utc_now(),
+                "budget_start_minutes": args.max_minutes,
+                "budget_remaining_minutes": remaining_minutes,
+                "selected": selected,
+            },
+        )
+
+        campaign_rows: list[dict[str, Any]] = []
+        model_comparison: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
+
+        if not args.skip_science:
+            for test in selected:
+                test_id = test["test_id"]
+                if test_id == "claim3p_ising_cyclic_l8":
+                    output_root = results_dir / "science" / "claim3p_cyclic_L8"
+                    cmd = [
+                        python_exe,
+                        str(runners["claim3p"]),
+                        "--L",
+                        "8",
+                        "--A_size",
+                        "4",
+                        "--model",
+                        "ising_cyclic",
+                        "--chi_sweep",
+                        "2,4",
+                        "--restarts_per_chi",
+                        "1",
+                        "--fit_steps",
+                        "30",
+                        "--seed",
+                        str(args.seed),
+                        "--output",
+                        str(output_root),
+                    ]
+                    model_name = "ising_cyclic"
+                    L = 8
+                elif test_id == "claim3p_heisenberg_cyclic_l8":
+                    output_root = results_dir / "science" / "claim3p_heisenberg_cyclic_L8"
+                    cmd = [
+                        python_exe,
+                        str(runners["claim3p"]),
+                        "--L",
+                        "8",
+                        "--A_size",
+                        "4",
+                        "--model",
+                        "heisenberg_cyclic",
+                        "--chi_sweep",
+                        "2,4",
+                        "--restarts_per_chi",
+                        "1",
+                        "--fit_steps",
+                        "30",
+                        "--seed",
+                        str(args.seed),
+                        "--output",
+                        str(output_root),
+                    ]
+                    model_name = "heisenberg_cyclic"
+                    L = 8
+                elif test_id == "claim3_optionb_regime_check":
+                    output_root = results_dir / "science"
+                    cmd = [
+                        python_exe,
+                        str(runners["claim3"]),
+                        "--output_root",
+                        str(output_root),
+                        "--experiment_name",
+                        "claim3_explore",
+                        "--chi_sweep",
+                        "2,4,8",
+                        "--seeds_per_chi",
+                        "3",
+                        "--num_sites",
+                        "32",
+                        "--subsystem_sizes",
+                        "16,8,4",
+                        "--seed_base",
+                        str(args.seed + 7),
+                    ]
+                    model_name = "optionB"
+                    L = 32
+                elif test_id == "claim2_seed_perturbation":
+                    output_root = results_dir / "science" / "claim2_seed321"
+                    cmd = [python_exe, str(runners["claim2"]), "--output", str(output_root), "--seed", "321"]
+                    model_name = "claim2"
+                    L = 0
+                else:
+                    # Skip compute-heavy placeholder in LOCAL_ONLY mode.
+                    continue
+
+                c_entry = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name=f"explore_{test_id}",
+                    command=cmd,
+                    cwd=repo_root,
+                )
+                artifact_path = find_latest_subdir(output_root) or output_root
+                verdict_path = artifact_path / "verdict.json"
+                verdict = "NOT_RUN"
+                delta_aic = None
+                delta_bic = None
+                key_metrics: dict[str, Any] = {}
+                if verdict_path.exists():
+                    verdict_obj = json.loads(verdict_path.read_text(encoding="utf-8"))
+                    verdict = str(verdict_obj.get("verdict", "NOT_RUN"))
+                    falsifiers = verdict_obj.get("falsifiers", {})
+                    p34 = falsifiers.get("P3.4") or falsifiers.get("3.3_model_selection") or {}
+                    delta_aic = p34.get("delta_aic")
+                    delta_bic = p34.get("delta_bic")
+                    key_metrics = verdict_obj.get("metrics", {}) if isinstance(verdict_obj.get("metrics"), dict) else {}
+
+                campaign_rows.append(
+                    {
+                        "timestamp": utc_now(),
+                        "test_id": test_id,
+                        "model": model_name,
+                        "L": L,
+                        "chi": "2,4,8" if model_name == "optionB" else "2,4",
+                        "seed": args.seed,
+                        "key_metrics": json.dumps(key_metrics),
+                        "aic_delta": "" if delta_aic is None else delta_aic,
+                        "bic_delta": "" if delta_bic is None else delta_bic,
+                        "verdict": verdict,
+                        "artifact_path": str(artifact_path.relative_to(run_dir)),
+                        "exit_code": c_entry["exit_code"],
+                    }
+                )
+                model_comparison["tests"].append(
+                    {
+                        "test_id": test_id,
+                        "verdict": verdict,
+                        "delta_aic": delta_aic,
+                        "delta_bic": delta_bic,
+                        "artifact_path": str(artifact_path.relative_to(run_dir)),
+                    }
+                )
+
+        campaign_index_path = results_dir / "science" / "campaign" / "campaign_index.csv"
+        with campaign_index_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "timestamp",
+                    "test_id",
+                    "model",
+                    "L",
+                    "chi",
+                    "seed",
+                    "key_metrics",
+                    "aic_delta",
+                    "bic_delta",
+                    "verdict",
+                    "artifact_path",
+                    "exit_code",
+                ],
+            )
+            writer.writeheader()
+            for row in campaign_rows:
+                writer.writerow(row)
+
+        report_lines = [
+            "# Campaign Report",
+            "",
+            f"Generated: {utc_now()}",
+            f"Mode: {mode}",
+            "",
+            "| Test | Verdict | AIC delta | BIC delta | Artifact |",
+            "|---|---|---:|---:|---|",
+        ]
+        for row in campaign_rows:
+            report_lines.append(
+                f"| {row['test_id']} | {row['verdict']} | {row['aic_delta']} | {row['bic_delta']} | `{row['artifact_path']}` |"
+            )
+        if not campaign_rows:
+            report_lines.append("| none | NOT_RUN |  |  |  |")
+
+        (results_dir / "science" / "campaign" / "campaign_report.md").write_text(
+            "\n".join(report_lines) + "\n",
+            encoding="utf-8",
+        )
+        write_json(results_dir / "science" / "campaign" / "model_comparison.json", model_comparison)
+        manifest["steps"][step]["status"] = "PASS"
+        record_event(events_path, step, "step_finished", {"status": "PASS", "rows": len(campaign_rows)})
+
+        # Step 5: selection
+        step = "5"
+        manifest["steps"][step] = {"name": "Selection pass", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        pdf_path = find_pdf(repo_root, args.pdf_path)
+        if pdf_path is None:
+            stop_reason = "Framework with Selection PDF not found in discovery paths"
+            stop_classification = "SELECTION_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        evidence_index = {
+            "generated_at_utc": utc_now(),
+            "pdf_source": str(pdf_path),
+            "claims": {
+                "CGR_CONTRACT_COMPLIANCE": {
+                    "artifacts": [
+                        "results/contracts/contract_result.json",
+                        "results/sdk_validation/sdk_validation_result.json",
+                    ],
+                    "descriptor": "Governance and SDK contract status",
+                },
+                "CLAIM_2": {
+                    "artifacts": [
+                        "results/science/claim2_baseline",
+                        "results/science/baseline_summary.json",
+                    ],
+                    "descriptor": "Capacity tradeoff baseline evidence",
+                },
+                "CLAIM_3": {
+                    "artifacts": [
+                        "results/science/claim3_baseline",
+                        "results/science/campaign/campaign_index.csv",
+                    ],
+                    "descriptor": "Entropy scaling and regime checks",
+                },
+                "CLAIM_3P": {
+                    "artifacts": [
+                        "results/science/claim3p_ising_open",
+                        "results/science/campaign/model_comparison.json",
+                    ],
+                    "descriptor": "Physical convergence checks",
+                },
+            },
+        }
+
+        science_artifacts = {
+            "claim3p_baseline": "results/science/claim3p_ising_open",
+            "claim3_baseline": "results/science/claim3_baseline",
+            "campaign_report": "results/science/campaign/campaign_report.md",
+        }
+
+        selection_status, ledger_rows = build_selection_outputs(
+            run_dir=run_dir,
+            pdf_path=pdf_path,
+            evidence_index=evidence_index,
+            contract_status=contract_status,
+            science_status=science_status,
+            science_artifacts=science_artifacts,
+        )
+
+        manifest["steps"][step]["status"] = "PASS" if selection_status != "FAIL" else "FAIL"
+        record_event(
+            events_path,
+            step,
+            "step_finished",
+            {
+                "status": manifest["steps"][step]["status"],
+                "selection_status": selection_status,
+                "entries": len(ledger_rows),
+            },
+        )
+
+        if selection_status == "FAIL":
+            stop_reason = "Selection status was FAIL"
+            stop_classification = "SELECTION_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        # Step 6: final verdict, summary, retention
+        step = "6"
+        manifest["steps"][step] = {"name": "Verdict and retention", "status": "RUNNING"}
+        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+        overall_status = "COMPLETE"
+        if mode == "STOPPED":
+            overall_status = "STOPPED"
+        elif selection_status in {"UNDERDETERMINED"} or science_status in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN", "REJECTED"}:
+            overall_status = "PARTIAL"
+
+        workflow_status = {
+            "run_id": run_id,
+            "mode": mode,
+            "mcp_targets": {
+                "compute_target": manifest["mcp_targets"].get("compute_target"),
+                "docs_target": manifest["mcp_targets"].get("docs_target"),
+                "discovery_log": "logs/mcporter_list.txt",
+            },
+            "contract_status": contract_status,
+            "science_status": science_status,
+            "selection_status": selection_status,
+            "retention_status": "NOT_RUN",
+            "artifact_index": "results/index.json",
+            "notes": [
+                f"lint_status={lint_status}",
+                f"overall_status={overall_status}",
+            ],
+        }
+
+        write_json(results_dir / "workflow_auto_status.json", workflow_status)
+
+        verdict = {
+            "overall_status": overall_status,
+            "lint_status": lint_status,
+            "contract_status": contract_status,
+            "scientific_status": {
+                "status": science_status,
+                "baseline_summary": "results/science/baseline_summary.json",
+                "campaign_report": "results/science/campaign/campaign_report.md",
+            },
+            "selection_status": selection_status,
+            "deltas_vs_baseline_expectations": {
+                "local_only_mode": mode == "LOCAL_ONLY",
+                "exploration_runs": len(campaign_rows),
+            },
+            "key_artifact_pointers": {
+                "contracts": "results/contracts",
+                "sdk_validation": "results/sdk_validation",
+                "science": "results/science",
+                "selection": "results/selection",
+                "workflow_status": "results/workflow_auto_status.json",
+            },
+            "generated_at_utc": utc_now(),
+        }
+        write_json(results_dir / "VERDICT.json", verdict)
+
+        index_obj = {
+            "run_id": run_id,
+            "generated_at_utc": utc_now(),
+            "pointers": {
+                "contracts": {"path": "results/contracts"},
+                "sdk_validation": {"path": "results/sdk_validation"},
+                "science": {"path": "results/science"},
+                "selection": {"path": "results/selection"},
+                "VERDICT": {"path": "results/VERDICT.json"},
+            },
+        }
+        write_json(results_dir / "index.json", index_obj)
+
+        summary_lines = [
+            "# WORKFLOW_AUTO Summary",
+            "",
+            f"Run: `{run_id}`",
+            f"Mode: `{mode}`",
+            "",
+            "## 1. What ran",
+            "- Baseline suite: claim2/claim3/claim3p (local deterministic commands)",
+            "- Exploration subset executed under budget constraints",
+            "",
+            "## 2. What was learned and what changed",
+            f"- Contract status: `{contract_status}`",
+            f"- Science status: `{science_status}`",
+            f"- Selection status: `{selection_status}`",
+            "",
+            "## 3. Current conclusions",
+            "- Evidence is retained under `results/` and selected claims are classified in `results/selection/ledger.jsonl`.",
+            "",
+            "## 4. Underdetermined items and next tests",
+            "- See underdetermined entries in `results/selection/ledger.jsonl` with `next_test` recommendations.",
+            "",
+            "## 5. Troubleshooting and fixes applied",
+            f"- Port rotation used for CGF startup: {PORT_ROTATION}",
+            "- LOCAL_ONLY downscoping auto-applied when compute MCP target is unavailable.",
+            "",
+            "## 6. Rerun commands",
+            f"- `python3 tools/run_workflow_auto.py --repo-root {repo_root}`",
+            f"- `python3 tools/validate_workflow_auto_run.py --run-dir {run_dir}`",
+        ]
+        (run_dir / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+        retention = package_retention(run_dir, repo_root)
+        retention_status = "PASS"
+        workflow_status["retention_status"] = retention_status
+        write_json(results_dir / "workflow_auto_status.json", workflow_status)
+
+        manifest["steps"][step]["status"] = "PASS"
+        record_event(events_path, step, "step_finished", {"status": "PASS", "retention": retention})
+
+    except Exception as exc:  # noqa: BLE001
+        if stop_classification is None:
+            stop_classification = "RUNTIME_FAILURE"
+        if stop_classification not in FAILURE_CODES:
+            stop_classification = "RUNTIME_FAILURE"
+
+        if stop_reason is None:
+            stop_reason = str(exc)
+
+        manifest["failure_classification"] = stop_classification
+        manifest["failure_message"] = stop_reason
+
+        if mode != "STOPPED":
+            mode = "STOPPED"
+
+        # Always emit minimum required files for post-mortem.
+        fallback_status = {
+            "run_id": run_id,
+            "mode": mode,
+            "mcp_targets": {
+                "compute_target": manifest["mcp_targets"].get("compute_target"),
+                "docs_target": manifest["mcp_targets"].get("docs_target"),
+                "discovery_log": "logs/mcporter_list.txt",
+            },
+            "contract_status": contract_status,
+            "science_status": science_status,
+            "selection_status": selection_status,
+            "retention_status": retention_status,
+            "artifact_index": "results/index.json",
+            "notes": [f"failure_classification={stop_classification}", f"failure_message={stop_reason}"],
+        }
+        write_json(results_dir / "workflow_auto_status.json", fallback_status)
+
+        if not (results_dir / "VERDICT.json").exists():
+            write_json(
+                results_dir / "VERDICT.json",
+                {
+                    "overall_status": "STOPPED",
+                    "lint_status": lint_status,
+                    "contract_status": contract_status,
+                    "scientific_status": {"status": science_status},
+                    "selection_status": selection_status,
+                    "error": {"classification": stop_classification, "message": stop_reason},
+                    "generated_at_utc": utc_now(),
+                },
+            )
+
+        if not (results_dir / "index.json").exists():
+            write_json(
+                results_dir / "index.json",
+                {
+                    "run_id": run_id,
+                    "generated_at_utc": utc_now(),
+                    "pointers": {
+                        "contracts": {"path": "results/contracts"},
+                        "sdk_validation": {"path": "results/sdk_validation"},
+                        "science": {"path": "results/science"},
+                        "selection": {"path": "results/selection"},
+                        "VERDICT": {"path": "results/VERDICT.json"},
+                    },
+                },
+            )
+
+        if not (run_dir / "summary.md").exists():
+            (run_dir / "summary.md").write_text(
+                "# WORKFLOW_AUTO Summary\n\n"
+                f"Run: `{run_id}`\n\n"
+                f"Status: STOPPED ({stop_classification})\n\n"
+                f"Reason: {stop_reason}\n",
+                encoding="utf-8",
+            )
+
+    finally:
+        if cgf_proc and cgf_proc.poll() is None:
+            cgf_proc.terminate()
+            try:
+                cgf_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                cgf_proc.kill()
+
+        manifest["ended_utc"] = utc_now()
+        write_json(run_dir / "manifest.json", manifest)
+
+    # Validate resulting run artifacts once for immediate feedback.
+    validator_cmd = [python_exe, "tools/validate_workflow_auto_run.py", "--run-dir", str(run_dir), "--output", str(results_dir / "workflow_contract_validation.json")]
+    subprocess.run(validator_cmd, cwd=str(repo_root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+    print(str(run_dir))
+    return 0 if mode != "STOPPED" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

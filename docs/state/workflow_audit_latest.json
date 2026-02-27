@@ -1,0 +1,14 @@
+{
+  "run_dir": "/private/tmp/openclaws/Repos/host-adapters/RUN_20260227_225921",
+  "schema": "/private/tmp/openclaws/Repos/host-adapters/tools/workflow_auto_schema_v1.json",
+  "errors": 0,
+  "warnings": 1,
+  "ready": true,
+  "findings": [
+    {
+      "code": "JSONSCHEMA_NOT_INSTALLED",
+      "level": "WARN",
+      "message": "jsonschema not installed; key-level validation applied only"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://host-adapters.local/schemas/workflow_auto_schema_v1.json",
+  "title": "workflow_auto_status_v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "mode",
+    "mcp_targets",
+    "contract_status",
+    "science_status",
+    "selection_status",
+    "retention_status",
+    "artifact_index"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["COMPLETE", "PARTIAL", "STOPPED", "LOCAL_ONLY"]
+    },
+    "mcp_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compute_target", "docs_target", "discovery_log"],
+      "properties": {
+        "compute_target": {"type": ["string", "null"]},
+        "docs_target": {"type": ["string", "null"]},
+        "discovery_log": {"type": "string"}
+      }
+    },
+    "contract_status": {
+      "type": "string",
+      "enum": ["PASS", "LINT_DEBT", "FAIL", "SKIPPED"]
+    },
+    "science_status": {
+      "type": "string",
+      "enum": ["SUPPORTED", "NOT_SUPPORTED", "REJECTED", "INCONCLUSIVE", "PARTIAL", "NOT_RUN"]
+    },
+    "selection_status": {
+      "type": "string",
+      "enum": ["PASS", "UNDERDETERMINED", "FAIL", "NOT_RUN"]
+    },
+    "retention_status": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "NOT_RUN"]
+    },
+    "artifact_index": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

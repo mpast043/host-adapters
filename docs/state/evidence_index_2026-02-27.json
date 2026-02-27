@@ -1,0 +1,103 @@
+{
+  "generated_at_utc": "2026-02-27T23:26:51.450092+00:00",
+  "canonical_repo": "/tmp/openclaws/Repos/host-adapters",
+  "runs": [
+    {
+      "run_id": "RUN_20260227_151454",
+      "root": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/RUN_20260227_151454",
+      "manifest": "manifest.json",
+      "summary": "SUMMARY.md",
+      "verdict": "VERDICT.json",
+      "results_verdict": "results/VERDICT.json",
+      "science": {
+        "run_plan": "results/science/run_plan.json",
+        "baseline_summary": "results/baseline_summary.json",
+        "claim3p_ising_open": "results/science/claim3p_ising/20260227T205853Z_e95ea15e/verdict.json",
+        "claim3_entropy_smoke": "results/science/claim3_smoke/20260227T205925Z_05a91e4c/verdict.json"
+      },
+      "selection": {
+        "legacy_summary": "results/selection_summary.json",
+        "legacy_ledger": "results/selection_ledger.json"
+      },
+      "root_github": "https://github.com/mpast043/host-adapters-experimental-data/tree/main/host-adapters/RUN_20260227_151454"
+    },
+    {
+      "run_id": "RUN_20260227_161644",
+      "root": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/RUN_20260227_161644",
+      "manifest": "manifest.json",
+      "summary": "SUMMARY.md",
+      "verdict": "VERDICT.json",
+      "verdict_final": "VERDICT_FINAL.json",
+      "results_index": "results/index.json",
+      "science": {
+        "claim3_extended": "results/claim3_chi_extended/20260227T211813Z_d67fd589/verdict.json",
+        "claim3p_cyclic_l8": "results/claim3p_cyclic/20260227T213254Z_e539fadb/verdict.json",
+        "claim3p_cyclic_l16": "results/claim3p_cyclic_L16/20260227T214026Z_a4ddf6db/verdict.json",
+        "claim3p_seed123": "results/claim3p_seed123/20260227T211932Z_d6348ca7/verdict.json"
+      },
+      "selection": {
+        "legacy_summary": "results/selection_summary.json",
+        "legacy_ledger": "results/selection_ledger.json"
+      },
+      "retention": {
+        "record": "RETAINED.txt",
+        "archive": "retained_RUN_20260227_161644.tar.gz",
+        "retained_copy": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/retained_runs/retained_RUN_20260227_161644.tar.gz"
+      },
+      "root_github": "https://github.com/mpast043/host-adapters-experimental-data/tree/main/host-adapters/RUN_20260227_161644"
+    },
+    {
+      "run_id": "RUN_20260227_225921",
+      "root": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/RUN_20260227_225921",
+      "manifest": "manifest.json",
+      "summary": "summary.md",
+      "workflow_status": "results/workflow_auto_status.json",
+      "results_index": "results/index.json",
+      "results_verdict": "results/VERDICT.json",
+      "selection": {
+        "evidence_index": "results/selection/evidence_index.json",
+        "manifest": "results/selection/selection_manifest.json",
+        "ledger": "results/selection/ledger.jsonl",
+        "report": "results/selection/selection_report.md"
+      },
+      "contracts": {
+        "result": "results/contracts/contract_result.json",
+        "sdk_validation": "results/sdk_validation/sdk_validation_result.json"
+      },
+      "science": {
+        "run_plan": "results/science/run_plan.json",
+        "baseline_summary": "results/science/baseline_summary.json",
+        "exploration_proposals": "results/science/exploration_proposals.json",
+        "exploration_selected": "results/science/exploration_selected.json",
+        "campaign_index": "results/science/campaign/campaign_index.csv",
+        "campaign_report": "results/science/campaign/campaign_report.md",
+        "model_comparison": "results/science/campaign/model_comparison.json"
+      },
+      "retention": {
+        "record": "RETAINED.txt",
+        "archive": "retained_RUN_20260227_225921.tar.gz",
+        "retained_copy": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/retained_runs/retained_RUN_20260227_225921.tar.gz"
+      },
+      "validation": {
+        "workflow_contract": "results/workflow_contract_validation.json"
+      },
+      "root_github": "https://github.com/mpast043/host-adapters-experimental-data/tree/main/host-adapters/RUN_20260227_225921"
+    }
+  ],
+  "outputs": {
+    "physics_audit_root_local": "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/outputs/physics_audit",
+    "physics_audit_root_github": "https://github.com/mpast043/host-adapters-experimental-data/tree/main/host-adapters/outputs/physics_audit"
+  },
+  "notes": [
+    "MCP compute target unavailable on 2026-02-27; runs executed in LOCAL_ONLY mode.",
+    "Selection outputs in these runs are legacy format and require normalization to WORKFLOW_AUTO selection contract.",
+    "Workflow Auto canonical runner added: tools/run_workflow_auto.py",
+    "Legacy selection ledgers normalized into results/selection/* for historical runs.",
+    "Tiered physics audit updated with Tier B matrix artifacts under outputs/physics_audit/* and docs/state/physics_audit_logs/*.",
+    "Experimental run artifacts were migrated to host-adapters-experimental-data on 2026-02-27."
+  ],
+  "experimental_data_repo": {
+    "local_root": "/tmp/openclaws/Repos/host-adapters-experimental-data",
+    "github": "https://github.com/mpast043/host-adapters-experimental-data"
+  }
+}

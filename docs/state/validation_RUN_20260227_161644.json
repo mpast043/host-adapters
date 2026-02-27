@@ -1,0 +1,64 @@
+{
+  "run_dir": "/private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644",
+  "schema": "/private/tmp/openclaws/Repos/host-adapters/tools/workflow_auto_schema_v1.json",
+  "errors": 11,
+  "warnings": 0,
+  "ready": false,
+  "findings": [
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/VERDICT.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/workflow_auto_status.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/run_plan.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/baseline_summary.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/exploration_proposals.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/exploration_selected.json"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/campaign/campaign_index.csv"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/campaign/campaign_report.md"
+    },
+    {
+      "code": "RESULT_REQUIRED_MISSING",
+      "level": "ERROR",
+      "message": "Missing: /private/tmp/openclaws/Repos/host-adapters/RUN_20260227_161644/results/science/campaign/model_comparison.json"
+    },
+    {
+      "code": "INDEX_PATH_INVALID",
+      "level": "ERROR",
+      "message": "Index path missing: ../RUN_20260227_151454/results/contracts/"
+    },
+    {
+      "code": "INDEX_PATH_INVALID",
+      "level": "ERROR",
+      "message": "Index path missing: ../RUN_20260227_151454/results/sdk_validation/"
+    }
+  ]
+}

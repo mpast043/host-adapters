@@ -52,6 +52,11 @@ langgraph_cgf_data/
 openclaw_adapter_data/
 outputs/
 outputs/framework_run_*/
+RUN_*/
+retained_runs/
+logs/
+tmp/
+tee
 **/results/
 **/.venv/
 **/**pycache**/

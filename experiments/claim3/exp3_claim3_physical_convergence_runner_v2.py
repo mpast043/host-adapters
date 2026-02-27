@@ -119,12 +119,14 @@ def exact_diagonalization(L: int, model: str, A_size: int,
     
     print(f"  [ED] Building SPARSE {model} Hamiltonian for L={L}...")
     
-    if model == "ising_open":
+    if model in ["ising_open", "ising_cyclic"]:
         # Critical: sparse=True prevents densification
         # quimb uses jz, bx not j, h
-        H = qu.ham_ising(L, jz=j, bx=h, sparse=True, cyclic=False)
+        cyclic_flag = cyclic or model == "ising_cyclic"
+        H = qu.ham_ising(L, jz=j, bx=h, sparse=True, cyclic=cyclic_flag)
     elif model in ["heisenberg_open", "heisenberg_cyclic"]:
-        H = qu.ham_heis(L, sparse=True, cyclic=cyclic)
+        cyclic_flag = cyclic or model == "heisenberg_cyclic"
+        H = qu.ham_heis(L, sparse=True, cyclic=cyclic_flag)
     else:
         raise ValueError(f"Unknown model: {model}")
     
@@ -528,7 +530,11 @@ def main():
     ap = argparse.ArgumentParser(description="Claim 3P Physical Convergence v2")
     ap.add_argument("--L", type=int, required=True)
     ap.add_argument("--A_size", type=int, required=True)
-    ap.add_argument("--model", choices=["ising_open", "heisenberg_open"], required=True)
+    ap.add_argument(
+        "--model",
+        choices=["ising_open", "heisenberg_open", "ising_cyclic", "heisenberg_cyclic"],
+        required=True,
+    )
     ap.add_argument("--j", type=float, default=1.0)
     ap.add_argument("--h", type=float, default=1.0)
     ap.add_argument("--chi_sweep", default="2,4,8,16")

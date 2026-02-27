@@ -1,3 +1,12 @@
+# STATUS: SUPERSEDED (Historical Consolidated Report)
+#
+# Superseded on 2026-02-27 by canonical run artifacts in:
+# - RUN_20260227_161644/results/claim3p_cyclic/
+# - RUN_20260227_161644/results/claim3p_cyclic_L16/
+# - outputs/claim3P_final/*
+#
+# Keep this file for historical context only. Do not treat as current source of truth.
+
 # Claim 3P Physical Hamiltonian Convergence Test
 ## Consolidated Report — 2026-02-25
 
