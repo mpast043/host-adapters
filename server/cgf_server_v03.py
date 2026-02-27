@@ -13,12 +13,13 @@ Policy v0.3:
 - Host-agnostic: no branching on host_type
 """
 
+import hmac
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 # Import v0.3 schemas
@@ -100,6 +101,32 @@ else:
 
 # ============== CONFIGURATION ==============
 
+# Strict mode: when CGF_STRICT=1 the catch-all default-allow rule is replaced
+# with AUDIT so unknown tools are flagged rather than silently permitted.
+# Dev default is off (CGF_STRICT=0) to avoid breaking existing workflows.
+CGF_STRICT: bool = os.environ.get("CGF_STRICT", "0") == "1"
+if CGF_STRICT:
+    print("⚠ CGF_STRICT=1: default-allow rule overridden to AUDIT for unknown tools")
+
+# Optional bearer-token auth for write endpoints.
+# When CGF_AUTH_TOKEN is empty (default) auth is disabled — all requests pass.
+# When set, POST /v1/register, /v1/evaluate, /v1/outcomes/report require
+# "Authorization: Bearer <token>". GET /v1/health is always unprotected.
+CGF_AUTH_TOKEN: str = os.environ.get("CGF_AUTH_TOKEN", "")
+if CGF_AUTH_TOKEN:
+    print("CGF_AUTH_TOKEN set: bearer-token auth enabled on write endpoints")
+
+
+def require_auth(authorization: Optional[str] = Header(None)) -> None:
+    """FastAPI dependency — enforces bearer token when CGF_AUTH_TOKEN is set."""
+    if not CGF_AUTH_TOKEN:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization[len("Bearer "):]
+    if not hmac.compare_digest(token.encode(), CGF_AUTH_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 # Load policy config
 POLICY_CONFIG_PATH = Path(__file__).parent / "policy_config_v03.json"
 if POLICY_CONFIG_PATH.exists():
@@ -146,6 +173,34 @@ def log_structured(level: str, message: str, **fields):
         **fields
     }
     print(json.dumps(log_entry), flush=True)
+
+
+def log_correlated(
+    level: str,
+    message: str,
+    *,
+    adapter_id: Optional[str] = None,
+    proposal_id: Optional[str] = None,
+    decision_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+    **extra,
+):
+    """Structured log with standard governance correlation IDs.
+
+    Always includes adapter_id, proposal_id, decision_id, and event_type so
+    that log lines can be filtered by a single grep across any of these keys.
+    """
+    log_structured(
+        level,
+        message,
+        **{k: v for k, v in {
+            "adapter_id": adapter_id,
+            "proposal_id": proposal_id,
+            "decision_id": decision_id,
+            "event_type": event_type,
+            **extra,
+        }.items() if v is not None},
+    )
 
 # ============== METRICS HELPERS ==============
 
@@ -295,7 +350,19 @@ def _evaluate_with_policy_engine(proposal: Any, context: Any, signals: Any, deci
     
     # Evaluate with policy engine
     result = evaluate(proposal_dict, context_dict, signals_dict, POLICY_BUNDLE)
-    
+
+    # CGF_STRICT: override the catch-all default-allow to AUDIT for unknown tools
+    if CGF_STRICT and result.matched_rule_ids == ["default-allow"]:
+        from cgf_policy.types import DecisionType as _PDT
+        result = result.__class__(
+            decision=_PDT.AUDIT,
+            decision_confidence=result.decision_confidence,
+            matched_rule_ids=result.matched_rule_ids,
+            explanation_text=f"[STRICT MODE] {result.explanation_text}",
+            constraint=result.constraint,
+            audited=True,
+        )
+
     # Convert policy DecisionType to schema DecisionType
     decision_type_map = {
         PolicyDecisionType.ALLOW: DecisionType.ALLOW,
@@ -405,7 +472,16 @@ def _evaluate_legacy(proposal: Any, context: Any, signals: Any, decision_id: str
             reason_code="HIGH_RISK_WITH_ERRORS"
         )
     
-    # Default: ALLOW
+    # Default: ALLOW (or AUDIT in strict mode for unknown tools)
+    if CGF_STRICT:
+        return CGFDecision(
+            decision_id=decision_id,
+            proposal_id=proposal.proposal_id,
+            decision=DecisionType.AUDIT,
+            confidence=default_confidence,
+            justification="[STRICT MODE] Unknown tool — audit required; set CGF_STRICT=0 to allow by default",
+            reason_code="STRICT_DEFAULT_AUDIT"
+        )
     return CGFDecision(
         decision_id=decision_id,
         proposal_id=proposal.proposal_id,
@@ -470,7 +546,7 @@ def root():
     }
 
 @app.post("/v1/register")
-def register_adapter(reg: HostAdapterRegistration):
+def register_adapter(reg: HostAdapterRegistration, _auth: None = Depends(require_auth)):
     """Register a host adapter."""
     adapter_id = generate_id("adp")
     
@@ -515,6 +591,14 @@ def register_adapter(reg: HostAdapterRegistration):
         {"action_type": "memory_write", "risk_tier": "low", "fail_mode": "fail_open", "timeout_ms": 500, "rationale": "Default: allow on CGF down"},
     ]
     
+    log_correlated(
+        "info", "Adapter registered",
+        adapter_id=adapter_id,
+        event_type="ADAPTER_REGISTERED",
+        adapter_type=reg.adapter_type,
+        schema_version=request_version,
+    )
+
     return HostAdapterRegistrationResponse(
         schema_version=SCHEMA_VERSION if HAS_V03 else "0.2.0",
         adapter_id=adapter_id,
@@ -524,7 +608,7 @@ def register_adapter(reg: HostAdapterRegistration):
     )
 
 @app.post("/v1/evaluate")
-def evaluate_proposal(req: HostEvaluationRequest):
+def evaluate_proposal(req: HostEvaluationRequest, _auth: None = Depends(require_auth)):
     """Evaluate a proposal."""
     # Validate schema
     request_version = req.schema_version if hasattr(req, 'schema_version') else "0.2.0"
@@ -559,6 +643,17 @@ def evaluate_proposal(req: HostEvaluationRequest):
     # Evaluate with policy
     decision = evaluate_policy(req.proposal, req.context, req.capacity_signals)
     decisions[decision.decision_id] = decision
+
+    log_correlated(
+        "info", "Decision made",
+        adapter_id=req.adapter_id,
+        proposal_id=req.proposal.proposal_id,
+        decision_id=decision.decision_id,
+        event_type="DECISION_MADE",
+        decision=decision.decision.value,
+        confidence=decision.confidence,
+        reason_code=decision.reason_code,
+    )
     
     # Log decision
     log_event(HostEvent(
@@ -609,7 +704,7 @@ def evaluate_proposal(req: HostEvaluationRequest):
     )
 
 @app.post("/v1/outcomes/report")
-def report_outcome(outcome: HostOutcomeReport):
+def report_outcome(outcome: HostOutcomeReport, _auth: None = Depends(require_auth)):
     """Report execution outcome."""
     outcomes[outcome.proposal_id] = outcome
     
@@ -628,6 +723,16 @@ def report_outcome(outcome: HostOutcomeReport):
         }
     ))
     
+    log_correlated(
+        "info", "Outcome received",
+        adapter_id=outcome.adapter_id,
+        proposal_id=outcome.proposal_id,
+        decision_id=outcome.decision_id,
+        event_type="OUTCOME_LOGGED",
+        success=outcome.success,
+        committed=outcome.committed,
+    )
+
     return {"received": True}
 
 @app.get("/v1/proposals/{proposal_id}/replay")

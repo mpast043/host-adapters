@@ -108,10 +108,10 @@ class CGFConnectionError(GovernanceError):
     """Failed to connect to CGF server."""
     retry_count: int = 0
     
-    def __init__(self, message: str, retry_count: int = 0, **kwargs):
+    def __init__(self, message: str, retry_count: int = 0, error_code: str = "CGF_UNREACHABLE", **kwargs):
         super().__init__(
             message=message,
-            error_code="CGF_UNREACHABLE",
+            error_code=error_code,
             **kwargs
         )
         self.retry_count = retry_count

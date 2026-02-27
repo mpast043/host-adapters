@@ -1,4 +1,4 @@
-.PHONY: all install test lint format clean
+.PHONY: all install test test-fast lint format clean
 
 PYTHON := python3
 PIP := pip3
@@ -8,8 +8,14 @@ all: install test
 install:
 	$(PIP) install -r requirements.txt
 
+# Full gate: policy engine tests + contract compliance suite (starts CGF server)
 test:
-	$(PYTHON) -m pytest -v tools/contract_compliance_tests.py
+	$(PYTHON) -m pytest -q tests/
+	./tools/run_contract_suite.sh
+
+# Quick iteration: policy engine tests only (no CGF server required)
+test-fast:
+	$(PYTHON) -m pytest -q tests/
 
 lint:
 	ruff check .
