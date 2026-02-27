@@ -111,6 +111,28 @@ CGF_STRICT=1 python3 server/cgf_server_v03.py
 See [DEV.md](DEV.md) for full documentation including env vars, test commands,
 and fail-mode configuration.
 
+## Authentication
+
+Set `CGF_AUTH_TOKEN` to protect CGF write endpoints with bearer-token auth.
+`GET /v1/health` is always unprotected.
+
+```bash
+CGF_AUTH_TOKEN=mysecret python3 server/cgf_server_v03.py
+
+# Adapters must pass the matching token:
+CGF_AUTH_TOKEN=mysecret python3 -c "..."
+```
+
+When `CGF_AUTH_TOKEN` is empty (default) no authentication is required.
+
+## Circuit Breaker
+
+Set `CGF_CIRCUIT_BREAKER=1` on the adapter process to enable a circuit breaker that
+prevents repeated timeouts when CGF is down. After `CGF_CB_FAILURE_THRESHOLD` consecutive
+failures the circuit opens; calls raise `CGFConnectionError(error_code="CIRCUIT_OPEN")`
+immediately. After `CGF_CB_COOLDOWN_MS` ms one probe is allowed (HALF_OPEN); success
+resets to CLOSED.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -121,6 +143,11 @@ and fail-mode configuration.
 | `CGF_PORT` | `8080` | CGF server listen port |
 | `CGF_POLICY_BUNDLE_PATH` | `policy/policy_bundle_v1.json` | Policy bundle path |
 | `CGF_STRICT` | `0` | Strict mode: `1` → AUDIT unknown tools |
+| `CGF_AUTH_TOKEN` | `""` | Bearer token for write endpoints (empty = disabled) |
+| `CGF_CIRCUIT_BREAKER` | `0` | `1` → enable circuit breaker in CGF client |
+| `CGF_CB_FAILURE_THRESHOLD` | `3` | Failures before circuit opens |
+| `CGF_CB_COOLDOWN_MS` | `2000` | ms before HALF_OPEN transition |
+| `CGF_CB_HALF_OPEN_MAX_CALLS` | `1` | Probes allowed in HALF_OPEN |
 
 ## Governance Lifecycle
 

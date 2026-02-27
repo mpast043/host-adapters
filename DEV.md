@@ -75,6 +75,50 @@ python tools/schema_lint.py --dir ./outputs/ --strict
 | `CGF_PORT` | `8080` | CGF server listen port |
 | `CGF_POLICY_BUNDLE_PATH` | `policy/policy_bundle_v1.json` | Policy bundle to load |
 | `CGF_STRICT` | `0` | Strict mode — set to `1` to audit unknown tools |
+| `CGF_AUTH_TOKEN` | `""` | Bearer token for write endpoints (empty = disabled) |
+| `CGF_CIRCUIT_BREAKER` | `0` | `1` → enable circuit breaker in CGF client |
+| `CGF_CB_FAILURE_THRESHOLD` | `3` | Failures before circuit opens |
+| `CGF_CB_COOLDOWN_MS` | `2000` | ms before circuit transitions to HALF_OPEN |
+| `CGF_CB_HALF_OPEN_MAX_CALLS` | `1` | Probe calls allowed in HALF_OPEN state |
+
+## Bearer Token Auth (`CGF_AUTH_TOKEN`)
+
+By default the server has no authentication. Set `CGF_AUTH_TOKEN` to require a bearer
+token on all write endpoints (`POST /v1/register`, `POST /v1/evaluate`,
+`POST /v1/outcomes/report`). `GET /v1/health` is always unprotected.
+
+```bash
+CGF_AUTH_TOKEN=mysecret python3 server/cgf_server_v03.py
+
+# Correct token → passes auth (may get 422 for bad body)
+curl -X POST http://127.0.0.1:8080/v1/evaluate \
+  -H "Authorization: Bearer mysecret" \
+  -H "Content-Type: application/json" -d '{}'
+
+# Missing or wrong token → 401 Unauthorized
+curl -X POST http://127.0.0.1:8080/v1/evaluate -H "Content-Type: application/json" -d '{}'
+```
+
+> **Note**: The contract suite runs without `CGF_AUTH_TOKEN` set (auth disabled), so all
+> 8 tests pass unchanged.
+
+## Circuit Breaker (`CGF_CIRCUIT_BREAKER=1`)
+
+By default the CGF client retries until timeout on every call even when the server is down.
+Set `CGF_CIRCUIT_BREAKER=1` on the **adapter** process to enable a three-state circuit breaker
+that short-circuits calls after repeated failures:
+
+- **CLOSED** → normal; failures count toward threshold.
+- **OPEN** → calls raise `CGFConnectionError(error_code="CIRCUIT_OPEN")` immediately.
+- **HALF_OPEN** → one probe call allowed after cooldown; success → CLOSED, failure → OPEN.
+
+```bash
+CGF_CIRCUIT_BREAKER=1 CGF_CB_FAILURE_THRESHOLD=3 CGF_CB_COOLDOWN_MS=2000 \
+  python3 -c "from cgf_sdk.cgf_client import CGFClient; print('CB enabled')"
+```
+
+Adapters already catch `CGFConnectionError` generically, so `CIRCUIT_OPEN` is handled
+by the existing fail-mode table without any adapter code changes.
 
 ## Strict Policy Mode (`CGF_STRICT=1`)
 

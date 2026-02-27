@@ -13,12 +13,13 @@ Policy v0.3:
 - Host-agnostic: no branching on host_type
 """
 
+import hmac
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 # Import v0.3 schemas
@@ -106,6 +107,25 @@ else:
 CGF_STRICT: bool = os.environ.get("CGF_STRICT", "0") == "1"
 if CGF_STRICT:
     print("⚠ CGF_STRICT=1: default-allow rule overridden to AUDIT for unknown tools")
+
+# Optional bearer-token auth for write endpoints.
+# When CGF_AUTH_TOKEN is empty (default) auth is disabled — all requests pass.
+# When set, POST /v1/register, /v1/evaluate, /v1/outcomes/report require
+# "Authorization: Bearer <token>". GET /v1/health is always unprotected.
+CGF_AUTH_TOKEN: str = os.environ.get("CGF_AUTH_TOKEN", "")
+if CGF_AUTH_TOKEN:
+    print("CGF_AUTH_TOKEN set: bearer-token auth enabled on write endpoints")
+
+
+def require_auth(authorization: Optional[str] = Header(None)) -> None:
+    """FastAPI dependency — enforces bearer token when CGF_AUTH_TOKEN is set."""
+    if not CGF_AUTH_TOKEN:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization[len("Bearer "):]
+    if not hmac.compare_digest(token.encode(), CGF_AUTH_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 # Load policy config
 POLICY_CONFIG_PATH = Path(__file__).parent / "policy_config_v03.json"
@@ -526,7 +546,7 @@ def root():
     }
 
 @app.post("/v1/register")
-def register_adapter(reg: HostAdapterRegistration):
+def register_adapter(reg: HostAdapterRegistration, _auth: None = Depends(require_auth)):
     """Register a host adapter."""
     adapter_id = generate_id("adp")
     
@@ -588,7 +608,7 @@ def register_adapter(reg: HostAdapterRegistration):
     )
 
 @app.post("/v1/evaluate")
-def evaluate_proposal(req: HostEvaluationRequest):
+def evaluate_proposal(req: HostEvaluationRequest, _auth: None = Depends(require_auth)):
     """Evaluate a proposal."""
     # Validate schema
     request_version = req.schema_version if hasattr(req, 'schema_version') else "0.2.0"
@@ -684,7 +704,7 @@ def evaluate_proposal(req: HostEvaluationRequest):
     )
 
 @app.post("/v1/outcomes/report")
-def report_outcome(outcome: HostOutcomeReport):
+def report_outcome(outcome: HostOutcomeReport, _auth: None = Depends(require_auth)):
     """Report execution outcome."""
     outcomes[outcome.proposal_id] = outcome
     
