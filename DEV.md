@@ -69,9 +69,48 @@ python tools/schema_lint.py --dir ./outputs/ --strict
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| CGF_ENDPOINT | http://127.0.0.1:8080 | CGF server URL |
-| CGF_TIMEOUT_MS | 500 | Request timeout ms |
-| CGF_DATA_DIR | ./cgf_data/ | Local data directory |
+| `CGF_ENDPOINT` | `http://127.0.0.1:8080` | CGF server URL |
+| `CGF_TIMEOUT_MS` | `500` | Request timeout ms |
+| `CGF_DATA_DIR` | `./cgf_data/` | Local data directory |
+| `CGF_PORT` | `8080` | CGF server listen port |
+| `CGF_POLICY_BUNDLE_PATH` | `policy/policy_bundle_v1.json` | Policy bundle to load |
+| `CGF_STRICT` | `0` | Strict mode — set to `1` to audit unknown tools |
+
+## Strict Policy Mode (`CGF_STRICT=1`)
+
+By default the policy engine has a catch-all `default-allow` rule: tools that
+do not match any explicit rule are **allowed** (safe for development/testing).
+
+Setting `CGF_STRICT=1` changes this: any tool that falls through to the
+default rule receives an **AUDIT** decision instead of ALLOW. Adapters that
+don't explicitly handle AUDIT treat it as allow-with-logging, so it is
+non-breaking but surfaces unknown tools in governance logs.
+
+```bash
+# Run server with strict mode enabled
+CGF_STRICT=1 python3 server/cgf_server_v03.py
+
+# Run contract suite without strict mode (default, all tests pass)
+./tools/run_contract_suite.sh
+```
+
+> **Note**: The contract suite itself runs without `CGF_STRICT=1`. The `ls`
+> scenario (expected ALLOW) may receive AUDIT under strict mode because `ls`
+> does not match the `readonly-allowlist` regex pattern.
+
+## How to Run All Tests
+
+```bash
+# Full gate: policy engine + contract compliance suite (recommended for CI)
+make test
+
+# Quick iteration: policy engine only, no CGF server required
+make test-fast
+
+# Directly
+python3 -m pytest -q tests/
+./tools/run_contract_suite.sh
+```
 
 ## Fail Mode Table
 

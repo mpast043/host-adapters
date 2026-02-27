@@ -17,10 +17,23 @@ Architecture:
 import asyncio
 import json
 import os
+import sys
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
+
+# Resolve SDK path relative to this file so it works from any cwd
+_SDK_PATH = Path(__file__).parent.parent / "sdk" / "python"
+if str(_SDK_PATH) not in sys.path:
+    sys.path.insert(0, str(_SDK_PATH))
+
+from cgf_sdk.errors import (
+    GovernanceError,
+    ActionBlockedError,
+    FailModeError,
+    CGFConnectionError,
+)
 
 # Import v0.3 schemas with backward compatibility
 try:
@@ -369,9 +382,11 @@ class LangGraphAdapter(HostAdapter):
             "reason": decision.justification
         })
         
-        raise LangGraphToolBlocked(
-            tool_name=tool_call.get("tool_name") if tool_call else "unknown",
-            reason=decision.justification,
+        tool_name = tool_call.get("tool_name") if tool_call else "unknown"
+        raise ActionBlockedError(
+            message=f"Tool '{tool_name}' blocked by CGF: {decision.justification}",
+            reason_code=decision.reason_code or "BLOCKED_BY_POLICY",
+            proposal_id=decision.proposal_id,
             decision_id=decision.decision_id
         )
     
@@ -429,9 +444,16 @@ class LangGraphAdapter(HostAdapter):
         )
     
     async def report(self, outcome: HostOutcomeReport):
-        """Report outcome to CGF server."""
+        """Report outcome to CGF server with guaranteed audit trail.
+
+        Flow:
+        1. HTTP POST to CGF (best-effort).
+        2. Always write to local JSONL for audit.
+        3. If BOTH fail, emit structured stderr and raise GovernanceError.
+        """
         import aiohttp
-        
+
+        http_err: Optional[Exception] = None
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -441,12 +463,37 @@ class LangGraphAdapter(HostAdapter):
                 ):
                     pass
         except Exception as e:
-            log_event("warn", "Failed to report outcome", {"error": str(e)})
-        
-        # Local logging
-        outcome_path = Path(DEFAULT_CONFIG["data_dir"]) / "outcomes.jsonl"
-        with open(outcome_path, "a") as f:
-            f.write(json.dumps(outcome.model_dump() if hasattr(outcome, 'model_dump') else outcome.__dict__) + "\n")
+            http_err = e
+            log_event("warn", "Failed to report outcome to CGF", {"error": str(e)})
+
+        # Always write locally for audit trail
+        try:
+            Path(DEFAULT_CONFIG["data_dir"]).mkdir(parents=True, exist_ok=True)
+            outcome_path = Path(DEFAULT_CONFIG["data_dir"]) / "outcomes.jsonl"
+            record = outcome.model_dump() if hasattr(outcome, 'model_dump') else outcome.__dict__
+            if http_err is not None:
+                record = {**record, "http_error": str(http_err)}
+            with open(outcome_path, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception as fs_err:
+            # Double failure — surface to stderr and raise
+            import sys as _sys
+            _sys.stderr.write(json.dumps({
+                "level": "ERROR",
+                "event": "outcome_loss",
+                "proposal_id": outcome.proposal_id,
+                "decision_id": outcome.decision_id,
+                "http_ok": http_err is None,
+                "fs_error": str(fs_err),
+            }) + "\n")
+            _sys.stderr.flush()
+            if http_err is not None:
+                raise GovernanceError(
+                    message=f"Outcome loss: HTTP report failed ({http_err}), JSONL fallback failed ({fs_err})",
+                    error_code="OUTCOME_LOSS",
+                    proposal_id=outcome.proposal_id,
+                    decision_id=outcome.decision_id,
+                )
         
         self.emit_event(
             HostEventType.OUTCOME_LOGGED,
@@ -555,7 +602,7 @@ class LangGraphAdapter(HostAdapter):
             Dict with 'allowed', 'reason', 'decision_id', etc.
             
         Raises:
-            LangGraphToolBlocked: If CGF blocks the tool
+            ActionBlockedError: If CGF blocks the tool (SDK canonical exception)
         """
         start_time = datetime.now().timestamp()
         
@@ -615,18 +662,22 @@ class LangGraphAdapter(HostAdapter):
                         elif isinstance(decision_data, dict):
                             decision = CGFDecision(**decision_data)
                         else:
-                            raise CGFUnreachableError(f"Unexpected decision format: {type(decision_data)}")
+                            raise CGFConnectionError(
+                                message=f"Unexpected decision format: {type(decision_data)}",
+                                context={"format": str(type(decision_data))}
+                            )
                     else:
-                        raise CGFUnreachableError(f"CGF returned {resp.status}")
-        except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+                        raise CGFConnectionError(
+                            message=f"CGF returned unexpected status {resp.status}",
+                            context={"status_code": resp.status}
+                        )
+        except (aiohttp.ClientError, asyncio.TimeoutError, CGFConnectionError, Exception) as e:
             # P0 Fix: CGF unreachable - apply fail mode from cached table
-            is_side_effect = "write" in proposal.action_params.get("side_effects_hint", [])
             action_type = proposal.action_type.value if hasattr(proposal.action_type, 'value') else str(proposal.action_type)
             risk_tier = proposal.risk_tier.value if hasattr(proposal.risk_tier, 'value') else str(proposal.risk_tier)
             fail_mode = self._get_fail_mode(action_type, risk_tier)
-            
+
             if fail_mode == "fail_closed":
-                # Fail closed
                 duration_ms = (datetime.now().timestamp() - start_time) * 1000
                 outcome = await self.observe_execution(
                     proposal,
@@ -643,14 +694,13 @@ class LangGraphAdapter(HostAdapter):
                     error=str(e)
                 )
                 await self.report(outcome)
-                
-                raise LangGraphToolBlocked(
-                    tool_name=tool_name,
-                    reason=f"CGF unavailable ({e}) - fail_mode={fail_mode} for {action_type}:{risk_tier}",
+                raise ActionBlockedError(
+                    message=f"Tool '{tool_name}' blocked: CGF unavailable ({e}) - fail_mode={fail_mode} for {action_type}:{risk_tier}",
+                    reason_code="FAIL_MODE_BLOCKED",
+                    proposal_id=proposal.proposal_id,
                     decision_id="fail-mode"
                 )
             elif fail_mode == "defer":
-                # Defer - would queue but for now treat as BLOCK with defer reason
                 duration_ms = (datetime.now().timestamp() - start_time) * 1000
                 outcome = await self.observe_execution(
                     proposal,
@@ -667,10 +717,10 @@ class LangGraphAdapter(HostAdapter):
                     error=str(e)
                 )
                 await self.report(outcome)
-                
-                raise LangGraphToolBlocked(
-                    tool_name=tool_name,
-                    reason=f"CGF unavailable ({e}) - deferred (fail_mode={fail_mode})",
+                raise FailModeError(
+                    message=f"Tool '{tool_name}' deferred: CGF unavailable ({e}) - fail_mode={fail_mode}",
+                    fail_mode="defer",
+                    proposal_id=proposal.proposal_id,
                     decision_id="fail-mode"
                 )
             else:
@@ -731,23 +781,6 @@ class LangGraphAdapter(HostAdapter):
                 except json.JSONDecodeError:
                     continue
         return events
-
-
-# ============== EXCEPTIONS ===============
-
-class LangGraphToolBlocked(Exception):
-    """Exception raised when CGF blocks a tool."""
-    
-    def __init__(self, tool_name: str, reason: str, decision_id: str):
-        self.tool_name = tool_name
-        self.reason = reason
-        self.decision_id = decision_id
-        super().__init__(f"Tool '{tool_name}' blocked by CGF: {reason}")
-
-
-class CGFUnreachableError(Exception):
-    """CGF server is unreachable."""
-    pass
 
 
 # ============== LANGGRAPH INTEGRATION ==============
@@ -817,10 +850,14 @@ class GovernedToolNode:
                 # Execute original tool
                 return await self.tool_node(state) if asyncio.iscoroutinefunction(self.tool_node) else self.tool_node(state)
             else:
-                # Should have raised Blocked exception
-                raise LangGraphToolBlocked(tool_name, "Unknown block reason", "unknown")
-                
-        except LangGraphToolBlocked:
+                # Should have raised ActionBlockedError — fallback
+                raise ActionBlockedError(
+                    message=f"Tool '{tool_name}' blocked by CGF: unknown block reason",
+                    reason_code="UNKNOWN_BLOCK",
+                    decision_id="unknown"
+                )
+
+        except ActionBlockedError:
             # Return blocked response in LangGraph format
             return {
                 "messages": [
@@ -885,7 +922,7 @@ Example tool call that gets blocked:
 CGF Evaluation:
 - Proposal: tool_call with risk_tier=high
 - Decision: BLOCK (denylist match)
-- Enforcement: GovernedToolNode raises LangGraphToolBlocked
+- Enforcement: GovernedToolNode raises ActionBlockedError
 - Result: Error message in state, no file written
         """,
         "file": __file__,

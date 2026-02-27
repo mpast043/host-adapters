@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
 import time
 import uuid
 from datetime import datetime
@@ -21,6 +22,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
 import aiohttp
+
+# Resolve SDK path relative to this file so it works from any cwd
+_SDK_PATH = Path(__file__).parent.parent / "sdk" / "python"
+if str(_SDK_PATH) not in sys.path:
+    sys.path.insert(0, str(_SDK_PATH))
+
+from cgf_sdk.errors import (
+    GovernanceError,
+    ActionBlockedError,
+    ActionConstrainedError,
+    FailModeError,
+    CGFConnectionError,
+    CGFRegistryError,
+)
+
 from cgf_schemas_v02 import (
     SCHEMA_VERSION,
     ActionType,
@@ -48,18 +64,6 @@ class Config:
     SCHEMA_VERSION = SCHEMA_VERSION
 
 Config.DATA_DIR.mkdir(exist_ok=True)
-
-# ============== EXCEPTIONS ==============
-
-class CGFGovernanceError(Exception):
-    """CGF governance error with decision context."""
-    def __init__(self, message: str, decision: DecisionType, justification: str,
-                 proposal_id: Optional[str] = None, decision_id: Optional[str] = None):
-        super().__init__(message)
-        self.decision = decision
-        self.justification = justification
-        self.proposal_id = proposal_id
-        self.decision_id = decision_id
 
 # ============== ADAPTER ==============
 
@@ -267,7 +271,10 @@ class OpenClawAdapter:
             ) as resp:
                 data = await resp.json()
                 if not isinstance(data, dict):
-                    raise CGFGovernanceError(f"Invalid registration response: {type(data)}")
+                    raise GovernanceError(
+                        message=f"Invalid registration response: {type(data)}",
+                        error_code="INVALID_RESPONSE"
+                    )
                 self.adapter_id = data.get("adapter_id") or f"local-{uuid.uuid4().hex[:12]}"
                 
                 # P0 Fix: Cache fail_mode_table from registration
@@ -285,10 +292,14 @@ class OpenClawAdapter:
                     }
                 )
                 return self.adapter_id
+        except (GovernanceError, CGFRegistryError):
+            raise
         except Exception as e:
             self.adapter_id = f"local-{uuid.uuid4().hex[:12]}"
-            raise CGFGovernanceError(f"Registration failed: {e}", 
-                                     DecisionType.BLOCK, "registration_failure")
+            raise CGFRegistryError(
+                message=f"Registration failed: {e}",
+                context={"original_error": type(e).__name__}
+            )
     
     # ============== EVALUATION ==============
     
@@ -333,7 +344,11 @@ class OpenClawAdapter:
                 data = await resp.json()
                 
                 if not isinstance(data, dict):
-                    raise CGFGovernanceError(f"Invalid response format: {type(data)}")
+                    raise GovernanceError(
+                        message=f"Invalid response format: {type(data)}",
+                        error_code="INVALID_RESPONSE",
+                        proposal_id=proposal.proposal_id
+                    )
                 
                 decision_raw = data.get("decision")
                 if isinstance(decision_raw, dict):
@@ -368,18 +383,18 @@ class OpenClawAdapter:
                 
                 return decision
         except asyncio.TimeoutError:
-            raise CGFGovernanceError(
-                "CGF evaluation timeout", 
-                DecisionType.BLOCK, 
-                "evaluate_timeout",
-                proposal_id=proposal.proposal_id
+            raise CGFConnectionError(
+                message="CGF evaluation timeout",
+                proposal_id=proposal.proposal_id,
+                context={"is_timeout": True}
             )
+        except (GovernanceError,):
+            raise
         except Exception as e:
-            raise CGFGovernanceError(
-                f"CGF evaluation failed: {e}",
-                DecisionType.BLOCK,
-                "evaluate_failure",
-                proposal_id=proposal.proposal_id
+            raise CGFConnectionError(
+                message=f"CGF evaluation failed: {e}",
+                proposal_id=proposal.proposal_id,
+                context={"is_timeout": False, "original_error": type(e).__name__}
             )
     
     # ============== ENFORCEMENT ==============
@@ -412,10 +427,9 @@ class OpenClawAdapter:
             proposal_id=proposal.proposal_id,
             decision_id=decision_id
         )
-        raise CGFGovernanceError(
-            f"BLOCKED: {justification}",
-            DecisionType.BLOCK,
-            justification,
+        raise ActionBlockedError(
+            message=f"BLOCKED: {justification}",
+            reason_code=reason_code or "BLOCKED_BY_POLICY",
             proposal_id=proposal.proposal_id,
             decision_id=decision_id
         )
@@ -466,10 +480,10 @@ class OpenClawAdapter:
             decision_id=decision_id
         )
         
-        raise CGFGovernanceError(
-            f"CONSTRAINT_FAILED: Unknown constraint type {constraint_type}",
-            DecisionType.BLOCK,
-            "constraint_failure",
+        raise ActionConstrainedError(
+            message=f"CONSTRAINT_FAILED: Unknown constraint type {constraint_type}",
+            constraint_type=constraint_type,
+            constraint_error="unsupported constraint type",
             proposal_id=proposal.proposal_id,
             decision_id=decision_id
         )
@@ -548,6 +562,7 @@ class OpenClawAdapter:
             result_summary="Executed" if success else "Failed"
         )
         
+        http_err: Optional[Exception] = None
         try:
             async with self.session.post(
                 f"{self.cgf_endpoint}/v1/outcomes/report",
@@ -556,10 +571,35 @@ class OpenClawAdapter:
             ) as resp:
                 await resp.json()
         except Exception as e:
-            # Local fallback
-            outcome_path = self.data_dir / "outcomes_local.jsonl"
-            with open(outcome_path, "a") as f:
-                f.write(json.dumps({**outcome.model_dump(), "report_error": str(e)}) + "\n")
+            http_err = e
+            # Fall through to local JSONL backup
+
+        if http_err is not None:
+            # Local JSONL fallback — safe atomic-ish write
+            try:
+                self.data_dir.mkdir(parents=True, exist_ok=True)
+                outcome_path = self.data_dir / "outcomes_local.jsonl"
+                record = json.dumps({**outcome.model_dump(), "report_error": str(http_err)}) + "\n"
+                with open(outcome_path, "a") as f:
+                    f.write(record)
+            except Exception as fs_err:
+                # Double failure: surface to stderr and raise — no silent drops
+                import sys as _sys
+                _sys.stderr.write(json.dumps({
+                    "level": "ERROR",
+                    "event": "outcome_loss",
+                    "proposal_id": outcome.proposal_id,
+                    "decision_id": decision_id,
+                    "http_error": str(http_err),
+                    "fs_error": str(fs_err),
+                }) + "\n")
+                _sys.stderr.flush()
+                raise GovernanceError(
+                    message=f"Outcome loss: HTTP report failed ({http_err}), JSONL fallback failed ({fs_err})",
+                    error_code="OUTCOME_LOSS",
+                    proposal_id=outcome.proposal_id,
+                    decision_id=decision_id
+                )
         
         self.emit_event(
             HostEventType.OUTCOME_LOGGED,
@@ -629,12 +669,23 @@ class OpenClawAdapter:
         
         try:
             decision_data = await self.evaluate(proposal, context, signals)
-        except CGFGovernanceError as e:
-            # Fail mode already applied
-            decision = e.decision
-            if decision == DecisionType.BLOCK:
-                raise
-            decision_data = {"decision": decision.value, "decision_id": "fail-mode"}
+        except CGFConnectionError as conn_err:
+            # Apply fail mode from cached table (P0 fix wired up)
+            fail_decision = self.apply_fail_mode(proposal, conn_err)
+            if fail_decision == DecisionType.BLOCK:
+                raise ActionBlockedError(
+                    message="Blocked: CGF unreachable, fail_closed applied",
+                    reason_code="FAIL_MODE_BLOCKED",
+                    proposal_id=proposal.proposal_id
+                )
+            elif fail_decision == DecisionType.DEFER:
+                raise FailModeError(
+                    message="CGF unreachable, action deferred",
+                    fail_mode="defer",
+                    proposal_id=proposal.proposal_id
+                )
+            # fail_open — proceed with ALLOW
+            decision_data = {"decision": "ALLOW", "decision_id": "fail-mode"}
         
         decision = DecisionType(decision_data.get("decision", "BLOCK"))
         decision_id = decision_data.get("decision_id", "unknown")
@@ -707,8 +758,8 @@ if __name__ == "__main__":
                     namespace, content, sensitivity=sensitivity
                 )
                 print(f"  -> {result}")
-            except CGFGovernanceError as e:
-                print(f"  -> BLOCKED: {e.justification}")
+            except (ActionBlockedError, GovernanceError) as e:
+                print(f"  -> BLOCKED: {e}")
         
         print("\n" + "-" * 40)
         print(f"Total events: {adapter.event_count}")
