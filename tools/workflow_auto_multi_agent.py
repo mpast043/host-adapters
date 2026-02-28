@@ -12,6 +12,7 @@ The coordinator owns policy/stop rules and writes an agentic event ledger.
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import hashlib
 import json
@@ -82,12 +83,72 @@ def claim_gate_status(path: Path) -> dict[str, Any]:
     }
 
 
+def latest_campaign_by_test(run_dir: Path) -> dict[str, dict[str, str]]:
+    campaign_csv = run_dir / "results" / "science" / "campaign" / "campaign_index.csv"
+    if not campaign_csv.exists():
+        return {}
+    latest: dict[str, dict[str, str]] = {}
+    with campaign_csv.open("r", encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            test_id = str(row.get("test_id", "")).strip()
+            if test_id:
+                latest[test_id] = row
+    return latest
+
+
+def refresh_claim_map_live(base_claim_map_path: Path, run_dir: Path) -> Path:
+    """Create/update a run-local live claim map from baseline map + run evidence."""
+    base = load_claim_map(base_claim_map_path)
+    if not base:
+        return base_claim_map_path
+
+    claim_dir = run_dir / "results" / "claim_map"
+    claim_dir.mkdir(parents=True, exist_ok=True)
+    live_path = claim_dir / "framework_pdf_claim_map_live.json"
+
+    data = json.loads(json.dumps(base))  # deep copy
+    by_test = latest_campaign_by_test(run_dir)
+
+    # Conservative auto-promotion only for explicitly mapped partial claims.
+    evidence_map = {
+        "W01": "claim2_seed_perturbation",
+        "W05": "claim3_optionb_regime_check",
+        "W02": "claim_w02_poset_infimum",
+        "W06": "claim_w06_depth_vector_monotonicity",
+    }
+
+    for claim in data.get("claims", []):
+        cid = str(claim.get("id", "")).strip()
+        test_id = evidence_map.get(cid)
+        if not test_id:
+            continue
+        row = by_test.get(test_id)
+        if row is None:
+            continue
+        verdict = str(row.get("verdict", "")).upper().strip()
+        if verdict in {"PASS", "SUPPORTED", "ACCEPTED"}:
+            claim["status"] = "LOCAL_EXEC"
+            evidence_paths = claim.get("evidence_paths", [])
+            if not isinstance(evidence_paths, list):
+                evidence_paths = []
+            campaign_path = str((run_dir / "results" / "science" / "campaign" / "campaign_index.csv"))
+            if campaign_path not in evidence_paths:
+                evidence_paths.append(campaign_path)
+            claim["evidence_paths"] = evidence_paths
+
+    data["live_updated_utc"] = utc_now()
+    data["live_source_run_dir"] = str(run_dir)
+    live_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return live_path
+
+
 def runnable_claim_actions(unresolved_claim_ids: list[str]) -> list[str]:
     # Current executable coverage in workflow catalog.
     mapping = {
         "W01": "claim2_seed_perturbation",
         "W05": "claim3_optionb_regime_check",
-        "W08": "claim2_seed_perturbation",
+        "W02": "claim_w02_poset_infimum",
+        "W06": "claim_w06_depth_vector_monotonicity",
     }
     out: list[str] = []
     for cid in unresolved_claim_ids:
@@ -521,7 +582,8 @@ def main() -> int:
         mode = str(result.get("mode", "UNKNOWN")).upper()
         overall = str(result.get("overall_status", "UNKNOWN")).upper()
         selection = str(result.get("selection_status", "UNKNOWN")).upper()
-        claim_gate = claim_gate_status(args.claim_map.resolve())
+        effective_claim_map = refresh_claim_map_live(args.claim_map.resolve(), run_dir)
+        claim_gate = claim_gate_status(effective_claim_map)
         unresolved_actions = runnable_claim_actions(claim_gate.get("unresolved_claim_ids", []))
 
         print(
@@ -554,6 +616,24 @@ def main() -> int:
                 target = int(args.claim_map_target_unresolved)
                 if unresolved_count <= target:
                     return 0
+
+                if not unresolved_actions:
+                    append_event(
+                        events_path,
+                        {
+                            "ts_utc": utc_now(),
+                            "event": "claim_gate_unrunnable",
+                            "cycle": cycle,
+                            "unresolved_count": unresolved_count,
+                            "target_unresolved": target,
+                            "reason": "No runnable actions for remaining unresolved claims under current tier policy.",
+                        },
+                    )
+                    print(
+                        "[workflow-auto-agentic] unresolved claims remain, but no runnable actions are available "
+                        "under current tier policy; stopping unresolved"
+                    )
+                    return 2
 
                 if unresolved_digest and unresolved_digest == last_unresolved_digest:
                     unresolved_streak += 1

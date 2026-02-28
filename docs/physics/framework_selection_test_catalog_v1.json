@@ -104,6 +104,40 @@
       "execution_key": "claim2_seed_perturbation"
     },
     {
+      "test_id": "claim_w02_poset_infimum",
+      "title": "Claim W02 componentwise infimum executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W02"
+      ],
+      "decision_if_pass": "Promote W02 from DOC_ONLY to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag W02 contradiction and block progression pending formal fix.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w02_poset_infimum"
+    },
+    {
+      "test_id": "claim_w06_depth_vector_monotonicity",
+      "title": "Claim W06 depth-vector monotonicity executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W06"
+      ],
+      "decision_if_pass": "Promote W06 from DOC_ONLY to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag W06 monotonicity violation and open corrective branch.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w06_depth_vector_monotonicity"
+    },
+    {
       "test_id": "claim3p_ising_cyclic_l8",
       "title": "Claim 3P cyclic Ising branch check at L=8",
       "tier": "C",
