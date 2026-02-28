@@ -131,6 +131,30 @@ def run_command(
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = logs_dir / f"{name}.txt"
 
+    # Resume mode: reuse successful prior command results by step/name to avoid re-executing work.
+    if bool(manifest.get("_resume_enabled")):
+        for prior in reversed(manifest.get("commands", [])):
+            if prior.get("step") != step or prior.get("name") != name:
+                continue
+            if list(prior.get("command", [])) != command:
+                continue
+            if int(prior.get("exit_code", 1)) != 0:
+                continue
+            prior_log = run_dir / str(prior.get("log_path", ""))
+            if not prior_log.exists():
+                continue
+            record_event(
+                events_path,
+                step,
+                "command_reused",
+                {
+                    "name": name,
+                    "command": " ".join(command),
+                    "log_path": str(prior.get("log_path")),
+                },
+            )
+            return prior
+
     started = time.time()
     started_iso = utc_now()
     rc = 1
@@ -305,6 +329,50 @@ def choose_artifacts_root(repo_root: Path, explicit_root: Path | None) -> Path:
     return repo_root
 
 
+def safe_load_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def find_latest_run_dir(artifacts_root: Path) -> Path | None:
+    if not artifacts_root.exists():
+        return None
+    runs = [p for p in artifacts_root.glob("RUN_*") if p.is_dir()]
+    if not runs:
+        return None
+    return sorted(runs, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+
+
+def read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+    return rows
+
+
+def count_csv_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        return sum(1 for _ in reader)
+
+
 def locate_baseline_runners(repo_root: Path) -> dict[str, Path]:
     candidates = {
         "claim2": [
@@ -449,9 +517,9 @@ def build_selection_outputs(
             f.write(json.dumps(row) + "\n")
     (selection_dir / "selection_report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
 
-    if any(r["status"] == "REJECTED" for r in rows):
-        status = "FAIL"
-    elif any(r["status"] == "UNDERDETERMINED" for r in rows):
+    # Selection pipeline health is independent from scientific claim outcomes.
+    # REJECTED claims are valid outputs and must not fail Step 5 by themselves.
+    if any(r["status"] == "UNDERDETERMINED" for r in rows):
         status = "UNDERDETERMINED"
     else:
         status = "PASS"
@@ -507,6 +575,16 @@ def main() -> int:
         help="Directory where RUN_* and retained artifacts are written (defaults to external data repo when available)",
     )
     parser.add_argument("--run-id", type=str, default="")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an existing run when --run-id points to a prior RUN_* directory.",
+    )
+    parser.add_argument(
+        "--resume-latest",
+        action="store_true",
+        help="Resume the latest RUN_* directory in artifacts root when --run-id is not provided.",
+    )
     parser.add_argument("--pdf-path", type=Path, default=None)
     parser.add_argument("--max-minutes", type=int, default=120)
     parser.add_argument("--max-runs", type=int, default=80)
@@ -529,15 +607,37 @@ def main() -> int:
     artifacts_root = choose_artifacts_root(repo_root, args.artifacts_root)
     python_exe = get_python(repo_root)
 
-    run_id = args.run_id.strip() or f"RUN_{compact_ts()}"
+    run_id = args.run_id.strip()
+    if not run_id and args.resume_latest:
+        latest = find_latest_run_dir(artifacts_root)
+        if latest is not None:
+            run_id = latest.name
+    run_id = run_id or f"RUN_{compact_ts()}"
     run_dir = artifacts_root / run_id
+    resume_requested = bool(args.resume or args.resume_latest)
+    existing_run = run_dir.exists()
+    resume_enabled = resume_requested and existing_run
+    if existing_run and not resume_requested:
+        raise RuntimeError(
+            f"Run directory already exists: {run_dir}. Re-run with --resume (or --resume-latest) to continue."
+        )
+
     logs_dir = run_dir / "logs"
     results_dir = run_dir / "results"
     tmp_dir = run_dir / "tmp"
 
-    for p in [logs_dir, results_dir, tmp_dir, results_dir / "contracts", results_dir / "sdk_validation", results_dir / "science" / "campaign", results_dir / "selection"]:
+    for p in [
+        logs_dir,
+        results_dir,
+        tmp_dir,
+        results_dir / "contracts",
+        results_dir / "sdk_validation",
+        results_dir / "science" / "campaign",
+        results_dir / "selection",
+    ]:
         p.mkdir(parents=True, exist_ok=True)
-    write_json(results_dir / "capabilities.json", {"generated_at_utc": utc_now(), "status": "NOT_COLLECTED"})
+    if not resume_enabled or not (results_dir / "capabilities.json").exists():
+        write_json(results_dir / "capabilities.json", {"generated_at_utc": utc_now(), "status": "NOT_COLLECTED"})
 
     events_path = logs_dir / "workflow_events.jsonl"
 
@@ -563,6 +663,27 @@ def main() -> int:
             "discovery_log": "logs/mcporter_list.txt",
         },
     }
+    if resume_enabled:
+        existing_manifest = safe_load_json(run_dir / "manifest.json")
+        if existing_manifest is not None:
+            manifest = existing_manifest
+            manifest["run_id"] = run_id
+            manifest["repo_root"] = str(repo_root)
+            manifest["artifacts_root"] = str(artifacts_root)
+            manifest.setdefault("started_utc", utc_now())
+            manifest.setdefault("steps", {})
+            manifest.setdefault("commands", [])
+            manifest.setdefault("mcp_calls", [])
+            manifest.setdefault(
+                "mcp_targets",
+                {
+                    "compute_target": None,
+                    "docs_target": None,
+                    "discovery_log": "logs/mcporter_list.txt",
+                },
+            )
+        manifest.setdefault("resume_history", []).append({"resumed_utc": utc_now()})
+    manifest["_resume_enabled"] = resume_enabled
 
     stop_reason: str | None = None
     stop_classification: str | None = None
@@ -572,427 +693,60 @@ def main() -> int:
     selection_status = "NOT_RUN"
     retention_status = "NOT_RUN"
     mode = "COMPLETE"
+    campaign_rows: list[dict[str, Any]] = []
+    ledger_rows: list[dict[str, Any]] = []
 
     cgf_proc: subprocess.Popen[str] | None = None
     cgf_endpoint = "http://127.0.0.1:8080"
 
+    status_obj = safe_load_json(results_dir / "workflow_auto_status.json") if resume_enabled else None
+    verdict_obj = safe_load_json(results_dir / "VERDICT.json") if resume_enabled else None
+    if status_obj is not None:
+        contract_status = str(status_obj.get("contract_status", contract_status))
+        science_status = str(status_obj.get("science_status", science_status))
+        selection_status = str(status_obj.get("selection_status", selection_status))
+        retention_status = str(status_obj.get("retention_status", retention_status))
+        if str(status_obj.get("mode", "")).upper() == "LOCAL_ONLY":
+            mode = "LOCAL_ONLY"
+    if verdict_obj is not None:
+        lint_status = str(verdict_obj.get("lint_status", lint_status))
+    if resume_enabled:
+        campaign_rows = [{} for _ in range(count_csv_rows(results_dir / "science" / "campaign" / "campaign_index.csv"))]
+        ledger_rows = read_jsonl_rows(results_dir / "selection" / "ledger.jsonl")
+
+    def can_skip_step(step_id: str, required_paths: list[str]) -> bool:
+        if not resume_enabled:
+            return False
+        step_obj = manifest.get("steps", {}).get(step_id, {})
+        if str(step_obj.get("status", "")).upper() != "PASS":
+            return False
+        return all((run_dir / rel).exists() for rel in required_paths)
+
     try:
         # Step 0: preflight and MCP discovery
         step = "0"
-        manifest["steps"][step] = {"name": "Preflight and MCP discovery", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        preflight_cmds = [
-            ("env_uname", ["uname", "-a"]),
-            ("env_python_version", [python_exe, "--version"]),
-            ("env_pip_freeze", [python_exe, "-m", "pip", "freeze"]),
-            ("git_remote_v", ["git", "remote", "-v"]),
-            ("git_branch", ["git", "rev-parse", "--abbrev-ref", "HEAD"]),
-            ("git_commit", ["git", "rev-parse", "--short", "HEAD"]),
-            ("git_status_porcelain", ["git", "status", "--porcelain"]),
-        ]
-        for name, cmd in preflight_cmds:
-            run_command(
-                run_dir=run_dir,
-                manifest=manifest,
-                events_path=events_path,
-                step=step,
-                name=name,
-                command=cmd,
-                cwd=repo_root,
-            )
-
-        mcporter_cmd = run_command(
-            run_dir=run_dir,
-            manifest=manifest,
-            events_path=events_path,
-            step=step,
-            name="mcporter_cmd_check",
-            command=["sh", "-lc", "command -v mcporter"],
-            cwd=repo_root,
-        )
-        if mcporter_cmd["exit_code"] != 0:
-            stop_reason = "mcporter not found; cannot satisfy Step 0.4 discovery"
-            stop_classification = "RUNTIME_FAILURE"
-            mode = "STOPPED"
-        else:
-            mcporter_list = run_command(
-                run_dir=run_dir,
-                manifest=manifest,
-                events_path=events_path,
-                step=step,
-                name="mcporter_list",
-                command=["mcporter", "list"],
-                cwd=repo_root,
-            )
-            manifest["mcp_calls"].append(
-                {
-                    "tool": "mcporter list",
-                    "server_target": "local",
-                    "request_summary": "discover available MCP servers",
-                    "response_pointer": mcporter_list["log_path"],
-                }
-            )
-
-            mcporter_text = read_text(run_dir / mcporter_list["log_path"])
-            compute_target, docs_target, discovered = parse_mcporter_targets(mcporter_text)
-            manifest["mcp_targets"] = {
-                "compute_target": compute_target,
-                "docs_target": docs_target,
-                "discovery_log": "logs/mcporter_list.txt",
-                "servers": discovered,
-            }
-
-            capabilities = discover_capabilities(repo_root, discovered)
-            write_json(results_dir / "capabilities.json", capabilities)
-            manifest["capabilities"] = {"path": "results/capabilities.json", "skills_count": len(capabilities["skills"])}
-            record_event(
-                events_path,
-                step,
-                "capability_discovery",
-                {
-                    "commands_available": [k for k, v in capabilities["commands"].items() if v["available"]],
-                    "skills_count": len(capabilities["skills"]),
-                    "mcp_servers": discovered,
-                },
-            )
-
-            if compute_target is None:
+        if can_skip_step(step, ["logs/mcporter_list.txt", "results/capabilities.json"]):
+            manifest["steps"].setdefault(step, {"name": "Preflight and MCP discovery", "status": "PASS"})
+            record_event(events_path, step, "step_skipped_resume", {"status": "PASS"})
+            if manifest.get("mcp_targets", {}).get("compute_target") is None:
                 mode = "LOCAL_ONLY"
                 args.max_minutes = args.local_only_max_minutes
                 args.max_runs = args.local_only_max_runs
-
-        manifest["steps"][step]["status"] = "PASS" if stop_reason is None else "FAIL"
-        record_event(events_path, step, "step_finished", {"status": manifest["steps"][step]["status"]})
-
-        if stop_reason:
-            raise RuntimeError(stop_reason)
-
-        # Step 1: repo verification
-        step = "1"
-        manifest["steps"][step] = {"name": "Repo verification", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        if not args.skip_install:
-            install = run_command(
-                run_dir=run_dir,
-                manifest=manifest,
-                events_path=events_path,
-                step=step,
-                name="pip_install_requirements",
-                command=[python_exe, "-m", "pip", "install", "-r", "requirements.txt"],
-                cwd=repo_root,
-            )
-            if install["exit_code"] != 0:
-                stop_reason = "Dependency installation failed"
-                stop_classification = "RUNTIME_FAILURE"
-                mode = "STOPPED"
-                raise RuntimeError(stop_reason)
-
-        if not args.skip_lint:
-            lint = run_command(
-                run_dir=run_dir,
-                manifest=manifest,
-                events_path=events_path,
-                step=step,
-                name="make_lint",
-                command=["make", "lint"],
-                cwd=repo_root,
-            )
-            if lint["exit_code"] != 0:
-                # Safe autofix once.
-                run_command(
-                    run_dir=run_dir,
-                    manifest=manifest,
-                    events_path=events_path,
-                    step=step,
-                    name="ruff_fix",
-                    command=["ruff", "check", ".", "--fix"],
-                    cwd=repo_root,
-                )
-                run_command(
-                    run_dir=run_dir,
-                    manifest=manifest,
-                    events_path=events_path,
-                    step=step,
-                    name="ruff_format",
-                    command=["ruff", "format", "."],
-                    cwd=repo_root,
-                )
-                lint_rerun = run_command(
-                    run_dir=run_dir,
-                    manifest=manifest,
-                    events_path=events_path,
-                    step=step,
-                    name="make_lint_rerun",
-                    command=["make", "lint"],
-                    cwd=repo_root,
-                )
-                if lint_rerun["exit_code"] != 0:
-                    lint_status = "LINT_DEBT"
-
-        if not args.skip_tests:
-            test_env = os.environ.copy()
-            test_env["ALLOW_CGF_DOWN"] = "1"
-            makefile_text = read_text(repo_root / "Makefile")
-            use_test_fast = bool(re.search(r"(?m)^\s*test-fast\s*:", makefile_text))
-            if use_test_fast:
-                tests = run_command(
-                    run_dir=run_dir,
-                    manifest=manifest,
-                    events_path=events_path,
-                    step=step,
-                    name="make_test_fast",
-                    command=["make", "test-fast"],
-                    cwd=repo_root,
-                    env=test_env,
-                )
-            else:
-                tests = run_command(
-                    run_dir=run_dir,
-                    manifest=manifest,
-                    events_path=events_path,
-                    step=step,
-                    name="pytest_tests",
-                    command=[python_exe, "-m", "pytest", "-q", "tests/"],
-                    cwd=repo_root,
-                    env=test_env,
-                )
-            if tests["exit_code"] != 0:
-                stop_reason = "Step 1 tests failed"
-                stop_classification = "TEST_FAILURE"
-                mode = "STOPPED"
-                raise RuntimeError(stop_reason)
-
-        manifest["steps"][step]["status"] = "PASS"
-        record_event(events_path, step, "step_finished", {"status": "PASS", "lint_status": lint_status})
-
-        # Step 2: CGF bring-up + contract verification
-        step = "2"
-        manifest["steps"][step] = {"name": "CGF contract verification", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        server_started = False
-        for port in PORT_ROTATION:
-            if not is_port_available(port):
-                continue
-            log_path = logs_dir / f"cgf_server_{port}.txt"
-            env = os.environ.copy()
-            env["CGF_PORT"] = str(port)
-            env["PYTHONUNBUFFERED"] = "1"
-            with log_path.open("w", encoding="utf-8") as fout:
-                cgf_proc = subprocess.Popen(  # noqa: S603
-                    [python_exe, "server/cgf_server_v03.py"],
-                    cwd=str(repo_root),
-                    env=env,
-                    stdout=fout,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                )
-            cgf_endpoint = f"http://127.0.0.1:{port}"
-            for _ in range(16):
-                if cgf_proc.poll() is not None:
-                    break
-                ok, _, _ = http_health(cgf_endpoint, timeout_s=0.8)
-                if ok and cgf_proc.poll() is None:
-                    server_started = True
-                    break
-                time.sleep(0.5)
-            if server_started:
-                break
-            if cgf_proc and cgf_proc.poll() is None:
-                cgf_proc.terminate()
-                cgf_proc.wait(timeout=5)
-                cgf_proc = None
-
-        if not server_started:
-            stop_reason = "CGF server failed to start on any allowed port"
-            stop_classification = "RUNTIME_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
-
-        manifest["cgf"] = {"endpoint": cgf_endpoint}
-        health_ok, status_code, health_body = http_health(cgf_endpoint, timeout_s=2.0)
-        write_json(
-            results_dir / "cgf_health.json",
-            {
-                "endpoint": cgf_endpoint,
-                "ok": health_ok,
-                "status_code": status_code,
-                "body": health_body,
-                "checked_at_utc": utc_now(),
-            },
-        )
-        if not health_ok:
-            stop_reason = "CGF health check failed"
-            stop_classification = "RUNTIME_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
-
-        contract_cmd = [python_exe, "-m", "pytest", "-v", "tools/contract_compliance_tests.py"]
-        # Keep run_contract_suite.sh as a preferred command only when we are on the default
-        # endpoint; the shell wrapper currently hard-codes 8080 checks.
-        if cgf_endpoint.endswith(":8080") and (repo_root / "tools/run_contract_suite.sh").exists():
-            contract_cmd = ["bash", "tools/run_contract_suite.sh"]
-
-        contract_env = os.environ.copy()
-        contract_env["CGF_ENDPOINT"] = cgf_endpoint
-        contract = run_command(
-            run_dir=run_dir,
-            manifest=manifest,
-            events_path=events_path,
-            step=step,
-            name="contract_suite",
-            command=contract_cmd,
-            cwd=repo_root,
-            env=contract_env,
-        )
-
-        write_json(
-            results_dir / "contracts" / "contract_result.json",
-            {
-                "command": contract_cmd,
-                "exit_code": contract["exit_code"],
-                "log_path": contract["log_path"],
-                "endpoint": cgf_endpoint,
-                "generated_at_utc": utc_now(),
-            },
-        )
-
-        if contract["exit_code"] != 0:
-            contract_status = "FAIL"
-            stop_reason = "Contract suite failed"
-            stop_classification = "CONTRACT_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
-
-        sdk = run_command(
-            run_dir=run_dir,
-            manifest=manifest,
-            events_path=events_path,
-            step=step,
-            name="validate_sdk_artifacts",
-            command=[python_exe, "tools/validate_sdk_artifacts.py"],
-            cwd=repo_root,
-        )
-
-        write_json(
-            results_dir / "sdk_validation" / "sdk_validation_result.json",
-            {
-                "command": [python_exe, "tools/validate_sdk_artifacts.py"],
-                "exit_code": sdk["exit_code"],
-                "log_path": sdk["log_path"],
-                "generated_at_utc": utc_now(),
-            },
-        )
-
-        if sdk["exit_code"] != 0:
-            contract_status = "FAIL"
-            stop_reason = "SDK validation failed"
-            stop_classification = "CONTRACT_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
-
-        contract_status = "PASS" if lint_status == "PASS" else "LINT_DEBT"
-        manifest["steps"][step]["status"] = "PASS"
-        record_event(events_path, step, "step_finished", {"status": "PASS"})
-
-        # Step 3: baseline science
-        step = "3"
-        manifest["steps"][step] = {"name": "Scientific baseline suite", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        runners = locate_baseline_runners(repo_root)
-        run_plan = {
-            "generated_at_utc": utc_now(),
-            "baseline_tests": [
-                {"test_id": "claim2_tradeoff_baseline", "runner": str(runners["claim2"]), "seed": 123},
-                {"test_id": "claim3_optionb_baseline", "runner": str(runners["claim3"]), "seed": args.seed},
-                {"test_id": "claim3p_ising_open_baseline", "runner": str(runners["claim3p"]), "seed": args.seed},
-            ],
-            "exploration_tests": [],
-            "budgets": {
-                "max_minutes": args.max_minutes,
-                "max_runs": args.max_runs,
-                "max_failures": 10,
-                "seeds": 3,
-                "mode": mode,
-            },
-            "stop_conditions": {
-                "hard_failures": ["TEST_FAILURE", "CONTRACT_FAILURE", "RUNTIME_FAILURE", "SELECTION_FAILURE"],
-                "science_evidence_failure_is_nonblocking": True,
-            },
-        }
-        write_json(results_dir / "science" / "run_plan.json", run_plan)
-
-        baseline_outputs = {
-            "claim2_baseline": results_dir / "science" / "claim2_baseline",
-            "claim3_baseline": results_dir / "science" / "claim3_baseline",
-            "claim3p_ising_open": results_dir / "science" / "claim3p_ising_open",
-        }
-
-        baseline_commands = [
-            (
-                "science_claim2_baseline",
-                [python_exe, str(runners["claim2"]), "--output", str(baseline_outputs["claim2_baseline"]), "--seed", "123"],
-                "claim2_baseline",
-            ),
-            (
-                "science_claim3_optionb_baseline",
-                [
-                    python_exe,
-                    str(runners["claim3"]),
-                    "--output_root",
-                    str(results_dir / "science"),
-                    "--experiment_name",
-                    "claim3_baseline",
-                    "--chi_sweep",
-                    "2,4,8",
-                    "--seeds_per_chi",
-                    "3",
-                    "--num_sites",
-                    "32",
-                    "--subsystem_sizes",
-                    "16,8,4",
-                    "--seed_base",
-                    str(args.seed),
-                ],
-                "claim3_baseline",
-            ),
-            (
-                "science_claim3p_ising_open",
-                [
-                    python_exe,
-                    str(runners["claim3p"]),
-                    "--L",
-                    "8",
-                    "--A_size",
-                    "4",
-                    "--model",
-                    "ising_open",
-                    "--chi_sweep",
-                    "2,4",
-                    "--restarts_per_chi",
-                    "1",
-                    "--fit_steps",
-                    "30",
-                    "--seed",
-                    str(args.seed),
-                    "--output",
-                    str(baseline_outputs["claim3p_ising_open"]),
-                ],
-                "claim3p_ising_open",
-            ),
-        ]
-
-        baseline_summary: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
-
-        if args.skip_science:
-            baseline_summary["tests"].append({"test_id": "ALL_BASELINE", "status": "NOT_RUN", "reason": "--skip-science set"})
-            science_status = "NOT_RUN"
         else:
-            for name, cmd, key in baseline_commands:
-                entry = run_command(
+            manifest["steps"][step] = {"name": "Preflight and MCP discovery", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+            preflight_cmds = [
+                ("env_uname", ["uname", "-a"]),
+                ("env_python_version", [python_exe, "--version"]),
+                ("env_pip_freeze", [python_exe, "-m", "pip", "freeze"]),
+                ("git_remote_v", ["git", "remote", "-v"]),
+                ("git_branch", ["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+                ("git_commit", ["git", "rev-parse", "--short", "HEAD"]),
+                ("git_status_porcelain", ["git", "status", "--porcelain"]),
+            ]
+            for name, cmd in preflight_cmds:
+                run_command(
                     run_dir=run_dir,
                     manifest=manifest,
                     events_path=events_path,
@@ -1002,34 +756,447 @@ def main() -> int:
                     cwd=repo_root,
                 )
 
-                artifact_root = baseline_outputs[key]
-                artifact_path = find_latest_subdir(artifact_root) or artifact_root
-                verdict = detect_science_verdict(artifact_path)
-
-                baseline_summary["tests"].append(
+            mcporter_cmd = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="mcporter_cmd_check",
+                command=["sh", "-lc", "command -v mcporter"],
+                cwd=repo_root,
+            )
+            if mcporter_cmd["exit_code"] != 0:
+                stop_reason = "mcporter not found; cannot satisfy Step 0.4 discovery"
+                stop_classification = "RUNTIME_FAILURE"
+                mode = "STOPPED"
+            else:
+                mcporter_list = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="mcporter_list",
+                    command=["mcporter", "list"],
+                    cwd=repo_root,
+                )
+                manifest["mcp_calls"].append(
                     {
-                        "test_id": key,
-                        "command": cmd,
-                        "exit_code": entry["exit_code"],
-                        "log_path": entry["log_path"],
-                        "artifact_path": str(artifact_path.relative_to(run_dir)),
-                        "verdict": verdict,
+                        "tool": "mcporter list",
+                        "server_target": "local",
+                        "request_summary": "discover available MCP servers",
+                        "response_pointer": mcporter_list["log_path"],
                     }
                 )
 
-            verdicts = [t["verdict"] for t in baseline_summary["tests"]]
-            if any(v == "REJECTED" for v in verdicts):
-                science_status = "REJECTED"
-            elif any(v == "SUPPORTED" for v in verdicts):
-                science_status = "SUPPORTED"
-            elif any(v == "INCONCLUSIVE" for v in verdicts):
-                science_status = "PARTIAL"
-            else:
-                science_status = "NOT_RUN"
+                mcporter_text = read_text(run_dir / mcporter_list["log_path"])
+                compute_target, docs_target, discovered = parse_mcporter_targets(mcporter_text)
+                manifest["mcp_targets"] = {
+                    "compute_target": compute_target,
+                    "docs_target": docs_target,
+                    "discovery_log": "logs/mcporter_list.txt",
+                    "servers": discovered,
+                }
 
-        write_json(results_dir / "science" / "baseline_summary.json", baseline_summary)
-        manifest["steps"][step]["status"] = "PASS"
-        record_event(events_path, step, "step_finished", {"status": "PASS", "science_status": science_status})
+                capabilities = discover_capabilities(repo_root, discovered)
+                write_json(results_dir / "capabilities.json", capabilities)
+                manifest["capabilities"] = {"path": "results/capabilities.json", "skills_count": len(capabilities["skills"])}
+                record_event(
+                    events_path,
+                    step,
+                    "capability_discovery",
+                    {
+                        "commands_available": [k for k, v in capabilities["commands"].items() if v["available"]],
+                        "skills_count": len(capabilities["skills"]),
+                        "mcp_servers": discovered,
+                    },
+                )
+
+                if compute_target is None:
+                    mode = "LOCAL_ONLY"
+                    args.max_minutes = args.local_only_max_minutes
+                    args.max_runs = args.local_only_max_runs
+
+            manifest["steps"][step]["status"] = "PASS" if stop_reason is None else "FAIL"
+            record_event(events_path, step, "step_finished", {"status": manifest["steps"][step]["status"]})
+
+            if stop_reason:
+                raise RuntimeError(stop_reason)
+
+        # Step 1: repo verification
+        step = "1"
+        if can_skip_step(step, []):
+            manifest["steps"].setdefault(step, {"name": "Repo verification", "status": "PASS"})
+            record_event(events_path, step, "step_skipped_resume", {"status": "PASS", "lint_status": lint_status})
+        else:
+            manifest["steps"][step] = {"name": "Repo verification", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+            if not args.skip_install:
+                install = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="pip_install_requirements",
+                    command=[python_exe, "-m", "pip", "install", "-r", "requirements.txt"],
+                    cwd=repo_root,
+                )
+                if install["exit_code"] != 0:
+                    stop_reason = "Dependency installation failed"
+                    stop_classification = "RUNTIME_FAILURE"
+                    mode = "STOPPED"
+                    raise RuntimeError(stop_reason)
+
+            if not args.skip_lint:
+                lint = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="make_lint",
+                    command=["make", "lint"],
+                    cwd=repo_root,
+                )
+                if lint["exit_code"] != 0:
+                    # Safe autofix once.
+                    run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name="ruff_fix",
+                        command=["ruff", "check", ".", "--fix"],
+                        cwd=repo_root,
+                    )
+                    run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name="ruff_format",
+                        command=["ruff", "format", "."],
+                        cwd=repo_root,
+                    )
+                    lint_rerun = run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name="make_lint_rerun",
+                        command=["make", "lint"],
+                        cwd=repo_root,
+                    )
+                    if lint_rerun["exit_code"] != 0:
+                        lint_status = "LINT_DEBT"
+
+            if not args.skip_tests:
+                test_env = os.environ.copy()
+                test_env["ALLOW_CGF_DOWN"] = "1"
+                makefile_text = read_text(repo_root / "Makefile")
+                use_test_fast = bool(re.search(r"(?m)^\s*test-fast\s*:", makefile_text))
+                if use_test_fast:
+                    tests = run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name="make_test_fast",
+                        command=["make", "test-fast"],
+                        cwd=repo_root,
+                        env=test_env,
+                    )
+                else:
+                    tests = run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name="pytest_tests",
+                        command=[python_exe, "-m", "pytest", "-q", "tests/"],
+                        cwd=repo_root,
+                        env=test_env,
+                    )
+                if tests["exit_code"] != 0:
+                    stop_reason = "Step 1 tests failed"
+                    stop_classification = "TEST_FAILURE"
+                    mode = "STOPPED"
+                    raise RuntimeError(stop_reason)
+
+            manifest["steps"][step]["status"] = "PASS"
+            record_event(events_path, step, "step_finished", {"status": "PASS", "lint_status": lint_status})
+
+        # Step 2: CGF bring-up + contract verification
+        step = "2"
+        if can_skip_step(step, ["results/contracts/contract_result.json", "results/sdk_validation/sdk_validation_result.json"]):
+            manifest["steps"].setdefault(step, {"name": "CGF contract verification", "status": "PASS"})
+            record_event(events_path, step, "step_skipped_resume", {"status": "PASS", "contract_status": contract_status})
+        else:
+            manifest["steps"][step] = {"name": "CGF contract verification", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+            server_started = False
+            for port in PORT_ROTATION:
+                if not is_port_available(port):
+                    continue
+                log_path = logs_dir / f"cgf_server_{port}.txt"
+                env = os.environ.copy()
+                env["CGF_PORT"] = str(port)
+                env["PYTHONUNBUFFERED"] = "1"
+                with log_path.open("w", encoding="utf-8") as fout:
+                    cgf_proc = subprocess.Popen(  # noqa: S603
+                        [python_exe, "server/cgf_server_v03.py"],
+                        cwd=str(repo_root),
+                        env=env,
+                        stdout=fout,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                    )
+                cgf_endpoint = f"http://127.0.0.1:{port}"
+                for _ in range(16):
+                    if cgf_proc.poll() is not None:
+                        break
+                    ok, _, _ = http_health(cgf_endpoint, timeout_s=0.8)
+                    if ok and cgf_proc.poll() is None:
+                        server_started = True
+                        break
+                    time.sleep(0.5)
+                if server_started:
+                    break
+                if cgf_proc and cgf_proc.poll() is None:
+                    cgf_proc.terminate()
+                    cgf_proc.wait(timeout=5)
+                    cgf_proc = None
+
+            if not server_started:
+                stop_reason = "CGF server failed to start on any allowed port"
+                stop_classification = "RUNTIME_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+            manifest["cgf"] = {"endpoint": cgf_endpoint}
+            health_ok, status_code, health_body = http_health(cgf_endpoint, timeout_s=2.0)
+            write_json(
+                results_dir / "cgf_health.json",
+                {
+                    "endpoint": cgf_endpoint,
+                    "ok": health_ok,
+                    "status_code": status_code,
+                    "body": health_body,
+                    "checked_at_utc": utc_now(),
+                },
+            )
+            if not health_ok:
+                stop_reason = "CGF health check failed"
+                stop_classification = "RUNTIME_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+            contract_cmd = [python_exe, "-m", "pytest", "-v", "tools/contract_compliance_tests.py"]
+            # Keep run_contract_suite.sh as a preferred command only when we are on the default
+            # endpoint; the shell wrapper currently hard-codes 8080 checks.
+            if cgf_endpoint.endswith(":8080") and (repo_root / "tools/run_contract_suite.sh").exists():
+                contract_cmd = ["bash", "tools/run_contract_suite.sh"]
+
+            contract_env = os.environ.copy()
+            contract_env["CGF_ENDPOINT"] = cgf_endpoint
+            contract = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="contract_suite",
+                command=contract_cmd,
+                cwd=repo_root,
+                env=contract_env,
+            )
+
+            write_json(
+                results_dir / "contracts" / "contract_result.json",
+                {
+                    "command": contract_cmd,
+                    "exit_code": contract["exit_code"],
+                    "log_path": contract["log_path"],
+                    "endpoint": cgf_endpoint,
+                    "generated_at_utc": utc_now(),
+                },
+            )
+
+            if contract["exit_code"] != 0:
+                contract_status = "FAIL"
+                stop_reason = "Contract suite failed"
+                stop_classification = "CONTRACT_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+            sdk = run_command(
+                run_dir=run_dir,
+                manifest=manifest,
+                events_path=events_path,
+                step=step,
+                name="validate_sdk_artifacts",
+                command=[python_exe, "tools/validate_sdk_artifacts.py"],
+                cwd=repo_root,
+            )
+
+            write_json(
+                results_dir / "sdk_validation" / "sdk_validation_result.json",
+                {
+                    "command": [python_exe, "tools/validate_sdk_artifacts.py"],
+                    "exit_code": sdk["exit_code"],
+                    "log_path": sdk["log_path"],
+                    "generated_at_utc": utc_now(),
+                },
+            )
+
+            if sdk["exit_code"] != 0:
+                contract_status = "FAIL"
+                stop_reason = "SDK validation failed"
+                stop_classification = "CONTRACT_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+            contract_status = "PASS" if lint_status == "PASS" else "LINT_DEBT"
+            manifest["steps"][step]["status"] = "PASS"
+            record_event(events_path, step, "step_finished", {"status": "PASS"})
+
+        runners = locate_baseline_runners(repo_root)
+
+        # Step 3: baseline science
+        step = "3"
+        if can_skip_step(step, ["results/science/run_plan.json", "results/science/baseline_summary.json"]):
+            manifest["steps"].setdefault(step, {"name": "Scientific baseline suite", "status": "PASS"})
+            record_event(events_path, step, "step_skipped_resume", {"status": "PASS", "science_status": science_status})
+        else:
+            manifest["steps"][step] = {"name": "Scientific baseline suite", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
+
+            run_plan = {
+                "generated_at_utc": utc_now(),
+                "baseline_tests": [
+                    {"test_id": "claim2_tradeoff_baseline", "runner": str(runners["claim2"]), "seed": 123},
+                    {"test_id": "claim3_optionb_baseline", "runner": str(runners["claim3"]), "seed": args.seed},
+                    {"test_id": "claim3p_ising_open_baseline", "runner": str(runners["claim3p"]), "seed": args.seed},
+                ],
+                "exploration_tests": [],
+                "budgets": {
+                    "max_minutes": args.max_minutes,
+                    "max_runs": args.max_runs,
+                    "max_failures": 10,
+                    "seeds": 3,
+                    "mode": mode,
+                },
+                "stop_conditions": {
+                    "hard_failures": ["TEST_FAILURE", "CONTRACT_FAILURE", "RUNTIME_FAILURE", "SELECTION_FAILURE"],
+                    "science_evidence_failure_is_nonblocking": True,
+                },
+            }
+            write_json(results_dir / "science" / "run_plan.json", run_plan)
+
+            baseline_outputs = {
+                "claim2_baseline": results_dir / "science" / "claim2_baseline",
+                "claim3_baseline": results_dir / "science" / "claim3_baseline",
+                "claim3p_ising_open": results_dir / "science" / "claim3p_ising_open",
+            }
+
+            baseline_commands = [
+                (
+                    "science_claim2_baseline",
+                    [python_exe, str(runners["claim2"]), "--output", str(baseline_outputs["claim2_baseline"]), "--seed", "123"],
+                    "claim2_baseline",
+                ),
+                (
+                    "science_claim3_optionb_baseline",
+                    [
+                        python_exe,
+                        str(runners["claim3"]),
+                        "--output_root",
+                        str(results_dir / "science"),
+                        "--experiment_name",
+                        "claim3_baseline",
+                        "--chi_sweep",
+                        "2,4,8",
+                        "--seeds_per_chi",
+                        "3",
+                        "--num_sites",
+                        "32",
+                        "--subsystem_sizes",
+                        "16,8,4",
+                        "--seed_base",
+                        str(args.seed),
+                    ],
+                    "claim3_baseline",
+                ),
+                (
+                    "science_claim3p_ising_open",
+                    [
+                        python_exe,
+                        str(runners["claim3p"]),
+                        "--L",
+                        "8",
+                        "--A_size",
+                        "4",
+                        "--model",
+                        "ising_open",
+                        "--chi_sweep",
+                        "2,4",
+                        "--restarts_per_chi",
+                        "1",
+                        "--fit_steps",
+                        "30",
+                        "--seed",
+                        str(args.seed),
+                        "--output",
+                        str(baseline_outputs["claim3p_ising_open"]),
+                    ],
+                    "claim3p_ising_open",
+                ),
+            ]
+
+            baseline_summary: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
+
+            if args.skip_science:
+                baseline_summary["tests"].append({"test_id": "ALL_BASELINE", "status": "NOT_RUN", "reason": "--skip-science set"})
+                science_status = "NOT_RUN"
+            else:
+                for name, cmd, key in baseline_commands:
+                    entry = run_command(
+                        run_dir=run_dir,
+                        manifest=manifest,
+                        events_path=events_path,
+                        step=step,
+                        name=name,
+                        command=cmd,
+                        cwd=repo_root,
+                    )
+
+                    artifact_root = baseline_outputs[key]
+                    artifact_path = find_latest_subdir(artifact_root) or artifact_root
+                    verdict = detect_science_verdict(artifact_path)
+
+                    baseline_summary["tests"].append(
+                        {
+                            "test_id": key,
+                            "command": cmd,
+                            "exit_code": entry["exit_code"],
+                            "log_path": entry["log_path"],
+                            "artifact_path": str(artifact_path.relative_to(run_dir)),
+                            "verdict": verdict,
+                        }
+                    )
+
+                verdicts = [t["verdict"] for t in baseline_summary["tests"]]
+                if any(v == "REJECTED" for v in verdicts):
+                    science_status = "REJECTED"
+                elif any(v == "SUPPORTED" for v in verdicts):
+                    science_status = "SUPPORTED"
+                elif any(v == "INCONCLUSIVE" for v in verdicts):
+                    science_status = "PARTIAL"
+                else:
+                    science_status = "NOT_RUN"
+
+            write_json(results_dir / "science" / "baseline_summary.json", baseline_summary)
+            manifest["steps"][step]["status"] = "PASS"
+            record_event(events_path, step, "step_finished", {"status": "PASS", "science_status": science_status})
 
         # Step 4: exploration
         step = "4"
@@ -1341,194 +1508,226 @@ def main() -> int:
 
         # Step 5: selection
         step = "5"
-        manifest["steps"][step] = {"name": "Selection pass", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        pdf_path = find_pdf(repo_root, args.pdf_path)
-        if pdf_path is None:
-            stop_reason = "Framework with Selection PDF not found in discovery paths"
-            stop_classification = "SELECTION_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
-
-        evidence_index = {
-            "generated_at_utc": utc_now(),
-            "pdf_source": str(pdf_path),
-            "claims": {
-                "CGR_CONTRACT_COMPLIANCE": {
-                    "artifacts": [
-                        "results/contracts/contract_result.json",
-                        "results/sdk_validation/sdk_validation_result.json",
-                    ],
-                    "descriptor": "Governance and SDK contract status",
-                },
-                "CLAIM_2": {
-                    "artifacts": [
-                        "results/science/claim2_baseline",
-                        "results/science/baseline_summary.json",
-                    ],
-                    "descriptor": "Capacity tradeoff baseline evidence",
-                },
-                "CLAIM_3": {
-                    "artifacts": [
-                        "results/science/claim3_baseline",
-                        "results/science/campaign/campaign_index.csv",
-                    ],
-                    "descriptor": "Entropy scaling and regime checks",
-                },
-                "CLAIM_3P": {
-                    "artifacts": [
-                        "results/science/claim3p_ising_open",
-                        "results/science/campaign/model_comparison.json",
-                    ],
-                    "descriptor": "Physical convergence checks",
-                },
-            },
-        }
-
-        science_artifacts = {
-            "claim3p_baseline": "results/science/claim3p_ising_open",
-            "claim3_baseline": "results/science/claim3_baseline",
-            "campaign_report": "results/science/campaign/campaign_report.md",
-        }
-
-        selection_status, ledger_rows = build_selection_outputs(
-            run_dir=run_dir,
-            pdf_path=pdf_path,
-            evidence_index=evidence_index,
-            contract_status=contract_status,
-            science_status=science_status,
-            science_artifacts=science_artifacts,
-        )
-
-        manifest["steps"][step]["status"] = "PASS" if selection_status != "FAIL" else "FAIL"
-        record_event(
-            events_path,
+        if can_skip_step(
             step,
-            "step_finished",
-            {
-                "status": manifest["steps"][step]["status"],
-                "selection_status": selection_status,
-                "entries": len(ledger_rows),
-            },
-        )
+            [
+                "results/selection/evidence_index.json",
+                "results/selection/selection_manifest.json",
+                "results/selection/ledger.jsonl",
+                "results/selection/selection_report.md",
+            ],
+        ):
+            manifest["steps"].setdefault(step, {"name": "Selection pass", "status": "PASS"})
+            ledger_rows = read_jsonl_rows(results_dir / "selection" / "ledger.jsonl")
+            record_event(
+                events_path,
+                step,
+                "step_skipped_resume",
+                {"status": "PASS", "selection_status": selection_status, "entries": len(ledger_rows)},
+            )
+        else:
+            manifest["steps"][step] = {"name": "Selection pass", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
-        if selection_status == "FAIL":
-            stop_reason = "Selection status was FAIL"
-            stop_classification = "SELECTION_FAILURE"
-            mode = "STOPPED"
-            raise RuntimeError(stop_reason)
+            pdf_path = find_pdf(repo_root, args.pdf_path)
+            if pdf_path is None:
+                stop_reason = "Framework with Selection PDF not found in discovery paths"
+                stop_classification = "SELECTION_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
+
+            evidence_index = {
+                "generated_at_utc": utc_now(),
+                "pdf_source": str(pdf_path),
+                "claims": {
+                    "CGR_CONTRACT_COMPLIANCE": {
+                        "artifacts": [
+                            "results/contracts/contract_result.json",
+                            "results/sdk_validation/sdk_validation_result.json",
+                        ],
+                        "descriptor": "Governance and SDK contract status",
+                    },
+                    "CLAIM_2": {
+                        "artifacts": [
+                            "results/science/claim2_baseline",
+                            "results/science/baseline_summary.json",
+                        ],
+                        "descriptor": "Capacity tradeoff baseline evidence",
+                    },
+                    "CLAIM_3": {
+                        "artifacts": [
+                            "results/science/claim3_baseline",
+                            "results/science/campaign/campaign_index.csv",
+                        ],
+                        "descriptor": "Entropy scaling and regime checks",
+                    },
+                    "CLAIM_3P": {
+                        "artifacts": [
+                            "results/science/claim3p_ising_open",
+                            "results/science/campaign/model_comparison.json",
+                        ],
+                        "descriptor": "Physical convergence checks",
+                    },
+                },
+            }
+
+            science_artifacts = {
+                "claim3p_baseline": "results/science/claim3p_ising_open",
+                "claim3_baseline": "results/science/claim3_baseline",
+                "campaign_report": "results/science/campaign/campaign_report.md",
+            }
+
+            selection_status, ledger_rows = build_selection_outputs(
+                run_dir=run_dir,
+                pdf_path=pdf_path,
+                evidence_index=evidence_index,
+                contract_status=contract_status,
+                science_status=science_status,
+                science_artifacts=science_artifacts,
+            )
+
+            manifest["steps"][step]["status"] = "PASS" if selection_status != "FAIL" else "FAIL"
+            record_event(
+                events_path,
+                step,
+                "step_finished",
+                {
+                    "status": manifest["steps"][step]["status"],
+                    "selection_status": selection_status,
+                    "entries": len(ledger_rows),
+                },
+            )
+
+            if selection_status == "FAIL":
+                stop_reason = "Selection status was FAIL"
+                stop_classification = "SELECTION_FAILURE"
+                mode = "STOPPED"
+                raise RuntimeError(stop_reason)
 
         # Step 6: final verdict, summary, retention
         step = "6"
-        manifest["steps"][step] = {"name": "Verdict and retention", "status": "RUNNING"}
-        record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
-
-        overall_status = "COMPLETE"
-        if mode == "STOPPED":
-            overall_status = "STOPPED"
-        elif selection_status in {"UNDERDETERMINED"} or science_status in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN", "REJECTED"}:
-            overall_status = "PARTIAL"
-
-        workflow_status = {
-            "run_id": run_id,
-            "mode": mode,
-            "mcp_targets": {
-                "compute_target": manifest["mcp_targets"].get("compute_target"),
-                "docs_target": manifest["mcp_targets"].get("docs_target"),
-                "discovery_log": "logs/mcporter_list.txt",
-            },
-            "contract_status": contract_status,
-            "science_status": science_status,
-            "selection_status": selection_status,
-            "retention_status": "NOT_RUN",
-            "artifact_index": "results/index.json",
-            "notes": [
-                f"lint_status={lint_status}",
-                f"overall_status={overall_status}",
+        if can_skip_step(
+            step,
+            [
+                "results/workflow_auto_status.json",
+                "results/VERDICT.json",
+                "results/index.json",
+                "summary.md",
+                "RETAINED.txt",
             ],
-        }
+        ):
+            manifest["steps"].setdefault(step, {"name": "Verdict and retention", "status": "PASS"})
+            retention_status = "PASS"
+            record_event(events_path, step, "step_skipped_resume", {"status": "PASS"})
+        else:
+            manifest["steps"][step] = {"name": "Verdict and retention", "status": "RUNNING"}
+            record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
-        write_json(results_dir / "workflow_auto_status.json", workflow_status)
+            overall_status = "COMPLETE"
+            if mode == "STOPPED":
+                overall_status = "STOPPED"
+            elif selection_status in {"UNDERDETERMINED"} or science_status in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN", "REJECTED"}:
+                overall_status = "PARTIAL"
 
-        verdict = {
-            "overall_status": overall_status,
-            "lint_status": lint_status,
-            "contract_status": contract_status,
-            "scientific_status": {
-                "status": science_status,
-                "baseline_summary": "results/science/baseline_summary.json",
-                "campaign_report": "results/science/campaign/campaign_report.md",
-            },
-            "selection_status": selection_status,
-            "deltas_vs_baseline_expectations": {
-                "local_only_mode": mode == "LOCAL_ONLY",
-                "exploration_runs": len(campaign_rows),
-            },
-            "key_artifact_pointers": {
-                "contracts": "results/contracts",
-                "sdk_validation": "results/sdk_validation",
-                "science": "results/science",
-                "selection": "results/selection",
-                "capabilities": "results/capabilities.json",
-                "workflow_status": "results/workflow_auto_status.json",
-            },
-            "generated_at_utc": utc_now(),
-        }
-        write_json(results_dir / "VERDICT.json", verdict)
+            workflow_status = {
+                "run_id": run_id,
+                "mode": mode,
+                "mcp_targets": {
+                    "compute_target": manifest["mcp_targets"].get("compute_target"),
+                    "docs_target": manifest["mcp_targets"].get("docs_target"),
+                    "discovery_log": "logs/mcporter_list.txt",
+                },
+                "contract_status": contract_status,
+                "science_status": science_status,
+                "selection_status": selection_status,
+                "retention_status": "NOT_RUN",
+                "artifact_index": "results/index.json",
+                "notes": [
+                    f"lint_status={lint_status}",
+                    f"overall_status={overall_status}",
+                ],
+            }
 
-        index_obj = {
-            "run_id": run_id,
-            "generated_at_utc": utc_now(),
-            "pointers": {
-                "contracts": {"path": "results/contracts"},
-                "sdk_validation": {"path": "results/sdk_validation"},
-                "science": {"path": "results/science"},
-                "selection": {"path": "results/selection"},
-                "capabilities": {"path": "results/capabilities.json"},
-                "VERDICT": {"path": "results/VERDICT.json"},
-            },
-        }
-        write_json(results_dir / "index.json", index_obj)
+            write_json(results_dir / "workflow_auto_status.json", workflow_status)
 
-        summary_lines = [
-            "# WORKFLOW_AUTO Summary",
-            "",
-            f"Run: `{run_id}`",
-            f"Mode: `{mode}`",
-            "",
-            "## 1. What ran",
-            "- Baseline suite: claim2/claim3/claim3p (local deterministic commands)",
-            "- Exploration subset executed under budget constraints",
-            "",
-            "## 2. What was learned and what changed",
-            f"- Contract status: `{contract_status}`",
-            f"- Science status: `{science_status}`",
-            f"- Selection status: `{selection_status}`",
-            "",
-            "## 3. Current conclusions",
-            "- Evidence is retained under `results/` and selected claims are classified in `results/selection/ledger.jsonl`.",
-            "",
-            "## 4. Underdetermined items and next tests",
-            "- See underdetermined entries in `results/selection/ledger.jsonl` with `next_test` recommendations.",
-            "",
-            "## 5. Troubleshooting and fixes applied",
-            f"- Port rotation used for CGF startup: {PORT_ROTATION}",
-            "- LOCAL_ONLY downscoping auto-applied when compute MCP target is unavailable.",
-            "",
-            "## 6. Rerun commands",
-            f"- `python3 tools/run_workflow_auto.py --repo-root {repo_root} --artifacts-root {artifacts_root}`",
-            f"- `python3 tools/validate_workflow_auto_run.py --run-dir {run_dir}`",
-        ]
-        (run_dir / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+            verdict = {
+                "overall_status": overall_status,
+                "lint_status": lint_status,
+                "contract_status": contract_status,
+                "scientific_status": {
+                    "status": science_status,
+                    "baseline_summary": "results/science/baseline_summary.json",
+                    "campaign_report": "results/science/campaign/campaign_report.md",
+                },
+                "selection_status": selection_status,
+                "deltas_vs_baseline_expectations": {
+                    "local_only_mode": mode == "LOCAL_ONLY",
+                    "exploration_runs": len(campaign_rows),
+                },
+                "key_artifact_pointers": {
+                    "contracts": "results/contracts",
+                    "sdk_validation": "results/sdk_validation",
+                    "science": "results/science",
+                    "selection": "results/selection",
+                    "capabilities": "results/capabilities.json",
+                    "workflow_status": "results/workflow_auto_status.json",
+                },
+                "generated_at_utc": utc_now(),
+            }
+            write_json(results_dir / "VERDICT.json", verdict)
 
-        retention = package_retention(run_dir, artifacts_root)
-        retention_status = "PASS"
-        workflow_status["retention_status"] = retention_status
-        write_json(results_dir / "workflow_auto_status.json", workflow_status)
+            index_obj = {
+                "run_id": run_id,
+                "generated_at_utc": utc_now(),
+                "pointers": {
+                    "contracts": {"path": "results/contracts"},
+                    "sdk_validation": {"path": "results/sdk_validation"},
+                    "science": {"path": "results/science"},
+                    "selection": {"path": "results/selection"},
+                    "capabilities": {"path": "results/capabilities.json"},
+                    "VERDICT": {"path": "results/VERDICT.json"},
+                },
+            }
+            write_json(results_dir / "index.json", index_obj)
 
-        manifest["steps"][step]["status"] = "PASS"
-        record_event(events_path, step, "step_finished", {"status": "PASS", "retention": retention})
+            summary_lines = [
+                "# WORKFLOW_AUTO Summary",
+                "",
+                f"Run: `{run_id}`",
+                f"Mode: `{mode}`",
+                "",
+                "## 1. What ran",
+                "- Baseline suite: claim2/claim3/claim3p (local deterministic commands)",
+                "- Exploration subset executed under budget constraints",
+                "",
+                "## 2. What was learned and what changed",
+                f"- Contract status: `{contract_status}`",
+                f"- Science status: `{science_status}`",
+                f"- Selection status: `{selection_status}`",
+                "",
+                "## 3. Current conclusions",
+                "- Evidence is retained under `results/` and selected claims are classified in `results/selection/ledger.jsonl`.",
+                "",
+                "## 4. Underdetermined items and next tests",
+                "- See underdetermined entries in `results/selection/ledger.jsonl` with `next_test` recommendations.",
+                "",
+                "## 5. Troubleshooting and fixes applied",
+                f"- Port rotation used for CGF startup: {PORT_ROTATION}",
+                "- LOCAL_ONLY downscoping auto-applied when compute MCP target is unavailable.",
+                "",
+                "## 6. Rerun commands",
+                f"- `python3 tools/run_workflow_auto.py --repo-root {repo_root} --artifacts-root {artifacts_root} --run-id {run_id} --resume`",
+                f"- `python3 tools/validate_workflow_auto_run.py --run-dir {run_dir}`",
+            ]
+            (run_dir / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+            retention = package_retention(run_dir, artifacts_root)
+            retention_status = "PASS"
+            workflow_status["retention_status"] = retention_status
+            write_json(results_dir / "workflow_auto_status.json", workflow_status)
+
+            manifest["steps"][step]["status"] = "PASS"
+            record_event(events_path, step, "step_finished", {"status": "PASS", "retention": retention})
 
     except Exception as exc:  # noqa: BLE001
         if stop_classification is None:

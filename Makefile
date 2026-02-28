@@ -34,7 +34,7 @@ clean:
 	rm -rf **/__pycache__ .pytest_cache *.log *.jsonl
 
 workflow-auto:
-	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)"
+	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)" --resume-latest
 
 workflow-audit:
 	@RUN_DIR=$$(ls -dt "$(DATA_REPO)"/RUN_* 2>/dev/null | head -1); \

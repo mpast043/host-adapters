@@ -181,7 +181,7 @@ def main():
     print(f"Expected for c=0.5 CFT: {0.5/3:.4f}")
     
     all_savings_better = all(r['savings_ratio'] > 1.0 for r in results)
-    scaling_ok = slope > 0.05
+    scaling_ok = bool(slope > 0.05)
     
     verdict = "SUPPORTED" if all_savings_better and scaling_ok else "NEEDS_REVIEW"
     
@@ -196,8 +196,8 @@ def main():
         'claim_id': 'claim-002',
         'claim_title': 'MERA as Optimal Capacity Allocator',
         'verdict': verdict,
-        'falsifier_2_1_passed': all_savings_better,
-        'falsifier_2_2_passed': scaling_ok,
+        'falsifier_2_1_passed': bool(all_savings_better),
+        'falsifier_2_2_passed': bool(scaling_ok),
         'slope': float(slope),
         'sample_count': len(results),
         'seed': args.seed
