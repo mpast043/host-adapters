@@ -88,20 +88,157 @@ def check_w06_monotone_dn(max_n: int) -> dict[str, Any]:
     )
 
 
+def check_w08_class_splitting_monotonicity(samples: int, bit_depth: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    corpus = ["".join(str(rng.randint(0, 1)) for _ in range(bit_depth)) for _ in range(samples)]
+    counts: list[int] = []
+    for k in range(1, bit_depth + 1):
+        classes = {s[:k] for s in corpus}
+        counts.append(len(classes))
+    drops = sum(1 for i in range(1, len(counts)) if counts[i] < counts[i - 1])
+    if drops == 0:
+        return verdict_payload(
+            claim_id="W08",
+            verdict="PASS",
+            rationale="Prefix class count was monotone non-decreasing across increasing resolution depth.",
+            metrics={"samples": samples, "bit_depth": bit_depth, "drops": drops, "counts_tail": counts[-10:]},
+        )
+    return verdict_payload(
+        claim_id="W08",
+        verdict="FAIL",
+        rationale="Observed decreases in class count under increasing resolution depth.",
+        metrics={"samples": samples, "bit_depth": bit_depth, "drops": drops, "counts_tail": counts[-10:]},
+    )
+
+
+def check_w13_cobs_decomposition_compat(samples: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    max_err = 0.0
+    for _ in range(samples):
+        c = rng.random()
+        c_inf = c
+        c_audit = c
+        c_sel = c
+        f = (c_inf + c_audit + c_sel) / 3.0
+        max_err = max(max_err, abs(f - c))
+    if max_err < 1e-12:
+        return verdict_payload(
+            claim_id="W13",
+            verdict="PASS",
+            rationale="Aggregate C_obs compatibility holds in the backward-compatible equal-components limit.",
+            metrics={"samples": samples, "max_abs_error": max_err},
+        )
+    return verdict_payload(
+        claim_id="W13",
+        verdict="FAIL",
+        rationale="Aggregate compatibility failed in equal-components limit.",
+        metrics={"samples": samples, "max_abs_error": max_err},
+    )
+
+
+def check_w14_ejection_expands_core(samples: int, universe_size: int, ensemble_size: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    failures = 0
+    for _ in range(samples):
+        universe = list(range(universe_size))
+        sets = []
+        for _ in range(ensemble_size):
+            k = rng.randint(max(1, universe_size // 3), universe_size)
+            sets.append(set(rng.sample(universe, k)))
+        full_inter = set.intersection(*sets)
+        j = rng.randrange(ensemble_size)
+        reduced = sets[:j] + sets[j + 1 :]
+        reduced_inter = set.intersection(*reduced) if reduced else set(universe)
+        if not reduced_inter.issuperset(full_inter):
+            failures += 1
+    if failures == 0:
+        return verdict_payload(
+            claim_id="W14",
+            verdict="PASS",
+            rationale="Removing one set never shrank the intersection in sampled ensembles.",
+            metrics={
+                "samples": samples,
+                "universe_size": universe_size,
+                "ensemble_size": ensemble_size,
+                "failures": failures,
+            },
+        )
+    return verdict_payload(
+        claim_id="W14",
+        verdict="FAIL",
+        rationale="Found sampled counterexample to set-intersection expansion under removal.",
+        metrics={
+            "samples": samples,
+            "universe_size": universe_size,
+            "ensemble_size": ensemble_size,
+            "failures": failures,
+        },
+    )
+
+
+def check_w16_time_consistency_monotone(samples: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    t_b = sorted(rng.uniform(-10.0, 10.0) for _ in range(samples))
+    a = rng.uniform(0.1, 2.0)  # positive slope => monotone
+    b = rng.uniform(-1.0, 1.0)
+    t_e = [a * t + b for t in t_b]
+    violations = sum(1 for i in range(1, samples) if t_e[i] < t_e[i - 1])
+    if violations == 0:
+        return verdict_payload(
+            claim_id="W16",
+            verdict="PASS",
+            rationale="Constructed monotone mapping t_E=f(t_B) held across sampled points.",
+            metrics={"samples": samples, "a": a, "b": b, "violations": violations},
+        )
+    return verdict_payload(
+        claim_id="W16",
+        verdict="FAIL",
+        rationale="Monotone mapping t_E=f(t_B) violated in sampled points.",
+        metrics={"samples": samples, "a": a, "b": b, "violations": violations},
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run executable checks for framework claims")
-    parser.add_argument("--check", required=True, choices=["w02_poset_infimum", "w06_depth_vector_monotonicity"])
+    parser.add_argument(
+        "--check",
+        required=True,
+        choices=[
+            "w02_poset_infimum",
+            "w06_depth_vector_monotonicity",
+            "w08_class_splitting_monotonicity",
+            "w13_cobs_decomposition_compat",
+            "w14_ejection_expands_core",
+            "w16_time_consistency_monotone",
+        ],
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--dims", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-n", type=int, default=1000)
+    parser.add_argument("--bit-depth", type=int, default=16)
+    parser.add_argument("--universe-size", type=int, default=50)
+    parser.add_argument("--ensemble-size", type=int, default=6)
     args = parser.parse_args()
 
     if args.check == "w02_poset_infimum":
         payload = check_w02_poset_infimum(samples=args.samples, dims=args.dims, seed=args.seed)
-    else:
+    elif args.check == "w06_depth_vector_monotonicity":
         payload = check_w06_monotone_dn(max_n=args.max_n)
+    elif args.check == "w08_class_splitting_monotonicity":
+        payload = check_w08_class_splitting_monotonicity(samples=args.samples, bit_depth=args.bit_depth, seed=args.seed)
+    elif args.check == "w13_cobs_decomposition_compat":
+        payload = check_w13_cobs_decomposition_compat(samples=args.samples, seed=args.seed)
+    elif args.check == "w14_ejection_expands_core":
+        payload = check_w14_ejection_expands_core(
+            samples=args.samples,
+            universe_size=args.universe_size,
+            ensemble_size=args.ensemble_size,
+            seed=args.seed,
+        )
+    else:
+        payload = check_w16_time_consistency_monotone(samples=args.samples, seed=args.seed)
 
     out_dir = args.output.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)

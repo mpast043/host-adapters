@@ -115,6 +115,10 @@ def refresh_claim_map_live(base_claim_map_path: Path, run_dir: Path) -> Path:
         "W05": "claim3_optionb_regime_check",
         "W02": "claim_w02_poset_infimum",
         "W06": "claim_w06_depth_vector_monotonicity",
+        "W08": "claim_w08_class_splitting_monotonicity",
+        "W13": "claim_w13_cobs_decomposition_compat",
+        "W14": "claim_w14_ejection_expands_core",
+        "W16": "claim_w16_time_consistency_monotone",
     }
 
     for claim in data.get("claims", []):
@@ -149,6 +153,10 @@ def runnable_claim_actions(unresolved_claim_ids: list[str]) -> list[str]:
         "W05": "claim3_optionb_regime_check",
         "W02": "claim_w02_poset_infimum",
         "W06": "claim_w06_depth_vector_monotonicity",
+        "W08": "claim_w08_class_splitting_monotonicity",
+        "W13": "claim_w13_cobs_decomposition_compat",
+        "W14": "claim_w14_ejection_expands_core",
+        "W16": "claim_w16_time_consistency_monotone",
     }
     out: list[str] = []
     for cid in unresolved_claim_ids:
@@ -183,6 +191,17 @@ def write_live_brief(
     mode = str(executor_result.get("mode", "UNKNOWN")).upper()
     overall = str(executor_result.get("overall_status", "UNKNOWN")).upper()
     selection = str(executor_result.get("selection_status", "UNKNOWN")).upper()
+    executed_tests: list[str] = []
+    campaign_csv = run_dir / "results" / "science" / "campaign" / "campaign_index.csv"
+    if campaign_csv.exists():
+        try:
+            with campaign_csv.open("r", encoding="utf-8", newline="") as f:
+                for row in csv.DictReader(f):
+                    tid = str(row.get("test_id", "")).strip()
+                    if tid and tid not in executed_tests:
+                        executed_tests.append(tid)
+        except Exception:  # noqa: BLE001
+            executed_tests = []
 
     lines = [
         "# Workflow Physics Live Brief",
@@ -214,6 +233,12 @@ def write_live_brief(
     lines.extend(["", "## Research Recommendations"])
     if recommended:
         lines.extend([f"- `{key}`" for key in recommended])
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Executed Tests (Current Run)"])
+    if executed_tests:
+        lines.extend([f"- `{key}`" for key in executed_tests])
     else:
         lines.append("- none")
 

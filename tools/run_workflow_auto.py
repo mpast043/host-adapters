@@ -1702,6 +1702,84 @@ def main() -> int:
                     L = 0
                     chi_label = "n/a"
                     seed_used = "n/a"
+                elif test_id == "claim_w08_class_splitting_monotonicity":
+                    output_root = results_dir / "science" / "claim_w08_class_splitting_monotonicity"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w08_class_splitting_monotonicity",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "4000",
+                        "--bit-depth",
+                        "16",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w13_cobs_decomposition_compat":
+                    output_root = results_dir / "science" / "claim_w13_cobs_decomposition_compat"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w13_cobs_decomposition_compat",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "2000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w14_ejection_expands_core":
+                    output_root = results_dir / "science" / "claim_w14_ejection_expands_core"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w14_ejection_expands_core",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "1500",
+                        "--universe-size",
+                        "60",
+                        "--ensemble-size",
+                        "7",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w16_time_consistency_monotone":
+                    output_root = results_dir / "science" / "claim_w16_time_consistency_monotone"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w16_time_consistency_monotone",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "3000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
                 elif test_id == "platform_openclaw_opt_check":
                     output_root = results_dir / "science" / "platform_openclaw_opt_check"
                     output_root.mkdir(parents=True, exist_ok=True)

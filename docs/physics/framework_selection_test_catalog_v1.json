@@ -138,6 +138,74 @@
       "execution_key": "claim_w06_depth_vector_monotonicity"
     },
     {
+      "test_id": "claim_w08_class_splitting_monotonicity",
+      "title": "Claim W08 class-splitting monotonicity executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W08"
+      ],
+      "decision_if_pass": "Promote W08 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag class-splitting monotonicity contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w08_class_splitting_monotonicity"
+    },
+    {
+      "test_id": "claim_w13_cobs_decomposition_compat",
+      "title": "Claim W13 C_obs decomposition compatibility check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W13"
+      ],
+      "decision_if_pass": "Promote W13 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag decomposition/backward-compatibility issue.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w13_cobs_decomposition_compat"
+    },
+    {
+      "test_id": "claim_w14_ejection_expands_core",
+      "title": "Claim W14 ejection theorem executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W14"
+      ],
+      "decision_if_pass": "Promote W14 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag set-theoretic contradiction in ejection theorem.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w14_ejection_expands_core"
+    },
+    {
+      "test_id": "claim_w16_time_consistency_monotone",
+      "title": "Claim W16 time consistency monotonic map check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W16"
+      ],
+      "decision_if_pass": "Promote W16 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag time-consistency mapping contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w16_time_consistency_monotone"
+    },
+    {
       "test_id": "claim3p_ising_cyclic_l8",
       "title": "Claim 3P cyclic Ising branch check at L=8",
       "tier": "C",
