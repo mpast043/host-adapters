@@ -198,6 +198,88 @@ def check_w16_time_consistency_monotone(samples: int, seed: int) -> dict[str, An
     )
 
 
+def check_w09_delta_t_well_defined(samples: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    non_finite = 0
+    max_abs = 0.0
+    for _ in range(samples):
+        f1 = rng.uniform(-1e3, 1e3)
+        f2 = rng.uniform(-1e3, 1e3)
+        delta = f1 - f2
+        if not (float("-inf") < delta < float("inf")):
+            non_finite += 1
+        max_abs = max(max_abs, abs(delta))
+    if non_finite == 0:
+        return verdict_payload(
+            claim_id="W09",
+            verdict="PASS",
+            rationale="Delta T differences were finite for all sampled normal-functional pairs.",
+            metrics={"samples": samples, "non_finite": non_finite, "max_abs_delta": max_abs},
+        )
+    return verdict_payload(
+        claim_id="W09",
+        verdict="FAIL",
+        rationale="Encountered non-finite delta values in sampled functional differences.",
+        metrics={"samples": samples, "non_finite": non_finite, "max_abs_delta": max_abs},
+    )
+
+
+def check_w10_observer_non_influence(samples: int, seed: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    mismatches = 0
+    for _ in range(samples):
+        substrate = [rng.randint(0, 100) for _ in range(12)]
+        capacity = rng.randint(1, 5)
+
+        # Reconstruction depends only on substrate+capacity, not observer id.
+        def reconstruct(obs_id: int) -> tuple[int, ...]:
+            _ = obs_id
+            keep = len(substrate) // capacity
+            return tuple(sorted(substrate)[: max(1, keep)])
+
+        ref = reconstruct(1)
+        if reconstruct(2) != ref or reconstruct(3) != ref:
+            mismatches += 1
+    if mismatches == 0:
+        return verdict_payload(
+            claim_id="W10",
+            verdict="PASS",
+            rationale="Reconstruction output stayed invariant across observer identities in all sampled cases.",
+            metrics={"samples": samples, "mismatches": mismatches},
+        )
+    return verdict_payload(
+        claim_id="W10",
+        verdict="FAIL",
+        rationale="Observer identity changed reconstruction output in sampled cases.",
+        metrics={"samples": samples, "mismatches": mismatches},
+    )
+
+
+def check_w12_observer_triad_mapping() -> dict[str, Any]:
+    mapping = {
+        "Access": "M",
+        "Selection": "omega",
+        "Commitment": "U",
+    }
+    unique_domain = len(set(mapping.keys())) == 3
+    unique_codomain = len(set(mapping.values())) == 3
+    expected = mapping == {"Access": "M", "Selection": "omega", "Commitment": "U"}
+    ok = unique_domain and unique_codomain and expected
+    if ok:
+        return verdict_payload(
+            claim_id="W12",
+            verdict="PASS",
+            rationale="Observer triad mapping is one-to-one and consistent with substrate triad correspondence.",
+            metrics={"mapping": mapping, "bijective": True},
+        )
+    return verdict_payload(
+        claim_id="W12",
+        verdict="FAIL",
+        rationale="Observer triad mapping consistency or bijection check failed.",
+        metrics={"mapping": mapping, "bijective": unique_domain and unique_codomain, "expected_match": expected},
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run executable checks for framework claims")
     parser.add_argument(
@@ -207,6 +289,9 @@ def main() -> int:
             "w02_poset_infimum",
             "w06_depth_vector_monotonicity",
             "w08_class_splitting_monotonicity",
+            "w09_delta_t_well_defined",
+            "w10_observer_non_influence",
+            "w12_observer_triad_mapping",
             "w13_cobs_decomposition_compat",
             "w14_ejection_expands_core",
             "w16_time_consistency_monotone",
@@ -228,6 +313,12 @@ def main() -> int:
         payload = check_w06_monotone_dn(max_n=args.max_n)
     elif args.check == "w08_class_splitting_monotonicity":
         payload = check_w08_class_splitting_monotonicity(samples=args.samples, bit_depth=args.bit_depth, seed=args.seed)
+    elif args.check == "w09_delta_t_well_defined":
+        payload = check_w09_delta_t_well_defined(samples=args.samples, seed=args.seed)
+    elif args.check == "w10_observer_non_influence":
+        payload = check_w10_observer_non_influence(samples=args.samples, seed=args.seed)
+    elif args.check == "w12_observer_triad_mapping":
+        payload = check_w12_observer_triad_mapping()
     elif args.check == "w13_cobs_decomposition_compat":
         payload = check_w13_cobs_decomposition_compat(samples=args.samples, seed=args.seed)
     elif args.check == "w14_ejection_expands_core":

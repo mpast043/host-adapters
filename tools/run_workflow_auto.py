@@ -1780,6 +1780,56 @@ def main() -> int:
                     L = 0
                     chi_label = "n/a"
                     seed_used = str(args.seed)
+                elif test_id == "claim_w09_delta_t_well_defined":
+                    output_root = results_dir / "science" / "claim_w09_delta_t_well_defined"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w09_delta_t_well_defined",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "5000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w10_observer_non_influence":
+                    output_root = results_dir / "science" / "claim_w10_observer_non_influence"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w10_observer_non_influence",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "3000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w12_observer_triad_mapping":
+                    output_root = results_dir / "science" / "claim_w12_observer_triad_mapping"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w12_observer_triad_mapping",
+                        "--output",
+                        str(output_root),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = "n/a"
                 elif test_id == "platform_openclaw_opt_check":
                     output_root = results_dir / "science" / "platform_openclaw_opt_check"
                     output_root.mkdir(parents=True, exist_ok=True)

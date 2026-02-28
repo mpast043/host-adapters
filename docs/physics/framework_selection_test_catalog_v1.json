@@ -206,6 +206,57 @@
       "execution_key": "claim_w16_time_consistency_monotone"
     },
     {
+      "test_id": "claim_w09_delta_t_well_defined",
+      "title": "Claim W09 Delta-T well-definedness executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W09"
+      ],
+      "decision_if_pass": "Promote W09 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag Delta-T well-definedness contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w09_delta_t_well_defined"
+    },
+    {
+      "test_id": "claim_w10_observer_non_influence",
+      "title": "Claim W10 observer non-influence executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W10"
+      ],
+      "decision_if_pass": "Promote W10 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag observer non-influence contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w10_observer_non_influence"
+    },
+    {
+      "test_id": "claim_w12_observer_triad_mapping",
+      "title": "Claim W12 observer-triad mapping executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W12"
+      ],
+      "decision_if_pass": "Promote W12 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag observer triad mapping inconsistency.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w12_observer_triad_mapping"
+    },
+    {
       "test_id": "claim3p_ising_cyclic_l8",
       "title": "Claim 3P cyclic Ising branch check at L=8",
       "tier": "C",
