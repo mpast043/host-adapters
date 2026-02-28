@@ -3,6 +3,11 @@
 PYTHON := python3
 PIP := pip3
 DATA_REPO ?= /tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters
+WORKFLOW_MAX_CYCLES ?= 6
+WORKFLOW_SLEEP_SECONDS ?= 2
+WORKFLOW_UNTIL_RESOLVED ?= 0
+WORKFLOW_TIER_C_AFTER_CYCLE ?=
+WORKFLOW_TIER_C_JUSTIFICATION ?= Escalate Tier C to resolve persistent UNDERDETERMINED selection
 
 all: install test
 
@@ -34,7 +39,7 @@ clean:
 	rm -rf **/__pycache__ .pytest_cache *.log *.jsonl
 
 workflow-auto:
-	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles 6 --sleep-seconds 2
+	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles $(WORKFLOW_MAX_CYCLES) --sleep-seconds $(WORKFLOW_SLEEP_SECONDS) $(if $(filter 1,$(WORKFLOW_UNTIL_RESOLVED)),--until-resolved,) $(if $(WORKFLOW_TIER_C_AFTER_CYCLE),--tier-c-after-cycle $(WORKFLOW_TIER_C_AFTER_CYCLE),) $(if $(WORKFLOW_TIER_C_JUSTIFICATION),--tier-c-justification "$(WORKFLOW_TIER_C_JUSTIFICATION)",)
 
 workflow-auto-once:
 	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)" --resume-latest
