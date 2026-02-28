@@ -1,4 +1,4 @@
-.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check local-compute-mcp framework-selection-plan
+.PHONY: all install test test-fast lint format clean workflow-auto workflow-auto-once workflow-audit openclaw-opt-check local-compute-mcp framework-selection-plan
 
 PYTHON := python3
 PIP := pip3
@@ -34,6 +34,9 @@ clean:
 	rm -rf **/__pycache__ .pytest_cache *.log *.jsonl
 
 workflow-auto:
+	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles 6 --sleep-seconds 2
+
+workflow-auto-once:
 	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)" --resume-latest
 
 workflow-audit:

@@ -695,6 +695,8 @@ def main() -> int:
     mode = "COMPLETE"
     campaign_rows: list[dict[str, Any]] = []
     ledger_rows: list[dict[str, Any]] = []
+    step4_executed = False
+    step5_executed = False
 
     cgf_proc: subprocess.Popen[str] | None = None
     cgf_endpoint = "http://127.0.0.1:8080"
@@ -1200,6 +1202,7 @@ def main() -> int:
 
         # Step 4: exploration
         step = "4"
+        step4_executed = True
         manifest["steps"][step] = {"name": "Exploration campaign", "status": "RUNNING"}
         record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
@@ -1516,7 +1519,7 @@ def main() -> int:
                 "results/selection/ledger.jsonl",
                 "results/selection/selection_report.md",
             ],
-        ):
+        ) and not step4_executed:
             manifest["steps"].setdefault(step, {"name": "Selection pass", "status": "PASS"})
             ledger_rows = read_jsonl_rows(results_dir / "selection" / "ledger.jsonl")
             record_event(
@@ -1526,6 +1529,7 @@ def main() -> int:
                 {"status": "PASS", "selection_status": selection_status, "entries": len(ledger_rows)},
             )
         else:
+            step5_executed = True
             manifest["steps"][step] = {"name": "Selection pass", "status": "RUNNING"}
             record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
@@ -1615,7 +1619,7 @@ def main() -> int:
                 "summary.md",
                 "RETAINED.txt",
             ],
-        ):
+        ) and not step4_executed and not step5_executed:
             manifest["steps"].setdefault(step, {"name": "Verdict and retention", "status": "PASS"})
             retention_status = "PASS"
             record_event(events_path, step, "step_skipped_resume", {"status": "PASS"})
