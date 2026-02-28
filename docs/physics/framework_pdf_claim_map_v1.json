@@ -1,0 +1,305 @@
+{
+  "version": "1.0",
+  "generated_utc": "2026-02-28T00:00:00Z",
+  "source_pdf": "/Users/meganpastore/Clawdbot/Repos/capacity-demo/Framework with selection.pdf",
+  "evidence_classes": [
+    "DOC_ONLY",
+    "LOCAL_EXEC",
+    "OPEN_OR_SPEC"
+  ],
+  "explicit_claims_coverage": {
+    "expected_claim_count": 20,
+    "mapped_claim_count": 20,
+    "source_pages": [
+      59,
+      60,
+      61,
+      62,
+      63
+    ]
+  },
+  "claims": [
+    {
+      "id": "W01",
+      "page": 59,
+      "statement": "If C1 <= C2 componentwise, monotonic order/filter properties hold.",
+      "status": "PARTIAL",
+      "evidence_class": [
+        "DOC_ONLY",
+        "LOCAL_EXEC"
+      ],
+      "evidence_paths": [
+        "/Users/meganpastore/Clawdbot/Repos/capacity-demo/tests/test_framework_b.py",
+        "/Users/meganpastore/Clawdbot/Repos/capacity-demo/tests/test_theorem_validation.py",
+        "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/docs/state/physics_audit_logs/tier_a_test_framework_b.txt"
+      ],
+      "next_test": "Add direct W01 identity checks in host-adapters regression suite."
+    },
+    {
+      "id": "W02",
+      "page": 59,
+      "statement": "Componentwise infimum yields well-defined shared capacity.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add executable poset infimum tests."
+    },
+    {
+      "id": "W03",
+      "page": 60,
+      "statement": "Memory excision is consistent with general excision.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add CPMT/Annex-T conformance tests."
+    },
+    {
+      "id": "W04",
+      "page": 60,
+      "statement": "Framework can represent itself without contradiction.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add self-reference replay invariants."
+    },
+    {
+      "id": "W05",
+      "page": 60,
+      "statement": "Mixed-regime coherence is non-contradictory.",
+      "status": "PARTIAL",
+      "evidence_class": [
+        "DOC_ONLY",
+        "LOCAL_EXEC"
+      ],
+      "evidence_paths": [
+        "/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/RUN_20260228_052622/results/science/campaign/campaign_index.csv"
+      ],
+      "next_test": "Add explicit mixed-regime fixtures from Annex S."
+    },
+    {
+      "id": "W06",
+      "page": 60,
+      "statement": "Depth-vector projection D(n) is monotone.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add executable monotone D(n) checks."
+    },
+    {
+      "id": "W07",
+      "page": 60,
+      "statement": "Cross-axis isolation preserves geometric gluing.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add cross-axis perturbation simulations."
+    },
+    {
+      "id": "W08",
+      "page": 61,
+      "statement": "N(C) is monotone non-decreasing.",
+      "status": "PARTIAL",
+      "evidence_class": [
+        "DOC_ONLY",
+        "LOCAL_EXEC"
+      ],
+      "evidence_paths": [
+        "/Users/meganpastore/Clawdbot/Repos/capacity-demo/tests/test_theorem_validation.py"
+      ],
+      "next_test": "Add direct N(C) regression test."
+    },
+    {
+      "id": "W09",
+      "page": 61,
+      "statement": "Delta-T(C) is well-defined semiclassically.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add executable Delta-T well-definedness checks."
+    },
+    {
+      "id": "W10",
+      "page": 61,
+      "statement": "Observers do not generate classical structure.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add independent model-checking tests."
+    },
+    {
+      "id": "W11",
+      "page": 61,
+      "statement": "CPMT operationalizes Annex T correctly.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add CPMT conformance suite."
+    },
+    {
+      "id": "W12",
+      "page": 61,
+      "statement": "Observer triad maps consistently to substrate triad.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add typed mapping tests."
+    },
+    {
+      "id": "W13",
+      "page": 62,
+      "statement": "C_obs decomposition is backward compatible.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add schema migration compatibility tests."
+    },
+    {
+      "id": "W14",
+      "page": 62,
+      "statement": "Observer ejection expands classical core.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add finite-ensemble constructive simulation."
+    },
+    {
+      "id": "W15",
+      "page": 62,
+      "statement": "Pointer-accuracy orthogonality is consistent with Annex T.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add orthogonality tests for p(m) and a(m)."
+    },
+    {
+      "id": "W16",
+      "page": 62,
+      "statement": "Distinguishing t_E and t_B resolves circularity.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add time-consistency simulation constraints."
+    },
+    {
+      "id": "W17",
+      "page": 62,
+      "statement": "Local fixed points are compatible with global fixed-point framing.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add multi-fixed-point toy model."
+    },
+    {
+      "id": "W18",
+      "page": 63,
+      "statement": "Compression governance integrates with T.7.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add policy replay checks over compression events."
+    },
+    {
+      "id": "W19",
+      "page": 63,
+      "statement": "C_obs^meta limitation is acknowledged, not solved.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY",
+        "OPEN_OR_SPEC"
+      ],
+      "evidence_paths": [],
+      "next_test": "No finite closure; keep as scope boundary."
+    },
+    {
+      "id": "W20",
+      "page": 63,
+      "statement": "Non-negotiability principle can be self-applied by the framework.",
+      "status": "DOC_ONLY",
+      "evidence_class": [
+        "DOC_ONLY"
+      ],
+      "evidence_paths": [],
+      "next_test": "Add policy-enforced self-argument blocking tests."
+    }
+  ],
+  "foundational_and_scope": [
+    {
+      "id": "F01",
+      "pages": [
+        2
+      ],
+      "statement": "Axiom: Triadic irreducibility.",
+      "status": "ASSUMED"
+    },
+    {
+      "id": "F02",
+      "pages": [
+        4
+      ],
+      "statement": "Axiom: Fixed-point selection.",
+      "status": "ASSUMED"
+    },
+    {
+      "id": "F03",
+      "pages": [
+        4
+      ],
+      "statement": "Theorem: Uniform fixed-point property.",
+      "status": "PROOF_SKETCH_ONLY"
+    },
+    {
+      "id": "F04",
+      "pages": [
+        5
+      ],
+      "statement": "Conjecture: fixed-point uniqueness under regularity.",
+      "status": "OPEN"
+    },
+    {
+      "id": "F05",
+      "pages": [
+        58
+      ],
+      "statement": "Non-claim: no new physical dynamics/degrees/laws are posited.",
+      "status": "SCOPE_GUARD"
+    },
+    {
+      "id": "F06",
+      "pages": [
+        59
+      ],
+      "statement": "Capacity boundary is not automatically a physical phase transition.",
+      "status": "SCOPE_GUARD"
+    }
+  ]
+}
