@@ -1,4 +1,4 @@
-.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit
+.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check
 
 PYTHON := python3
 PIP := pip3
@@ -44,3 +44,6 @@ workflow-audit:
 	fi; \
 	$(PYTHON) tools/validate_workflow_auto_run.py --run-dir "$$RUN_DIR" --output "$(DATA_REPO)/workflow_audit_latest.json" || true; \
 	$(PYTHON) -c "import json; d=json.load(open('$(DATA_REPO)/workflow_audit_latest.json')); score=max(0,100-(d.get('errors',0)*20)-(d.get('warnings',0)*5)); print('RUN={run} READY={ready} SCORE={score}/100 ERRORS={errors} WARNINGS={warnings}'.format(run=d.get('run_dir'), ready=d.get('ready'), score=score, errors=d.get('errors',0), warnings=d.get('warnings',0)))"
+
+openclaw-opt-check:
+	$(PYTHON) tools/openclaw_opt_check.py --output "$(DATA_REPO)/openclaw_adapter_data/openclaw_opt_check_latest.json"
