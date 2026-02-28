@@ -1,4 +1,4 @@
-.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check local-compute-mcp
+.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check local-compute-mcp framework-selection-plan
 
 PYTHON := python3
 PIP := pip3
@@ -50,3 +50,6 @@ openclaw-opt-check:
 
 local-compute-mcp:
 	$(PYTHON) tools/local_compute_mcp.py
+
+framework-selection-plan:
+	$(PYTHON) tools/plan_framework_selection_tests.py --repo-root . --artifacts-root "$(DATA_REPO)"

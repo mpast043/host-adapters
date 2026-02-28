@@ -229,6 +229,38 @@ def parse_mcporter_targets(mcporter_list_text: str) -> tuple[str | None, str | N
     return compute_target, docs_target, sorted(set(discovered))
 
 
+def discover_capabilities(repo_root: Path, discovered_servers: list[str]) -> dict[str, Any]:
+    commands = [
+        "python3",
+        "mcporter",
+        "openclaw",
+        "ruff",
+        "pytest",
+        "pdftotext",
+        "pdftoppm",
+        "uv",
+    ]
+    command_status = {cmd: {"available": shutil.which(cmd) is not None, "path": shutil.which(cmd)} for cmd in commands}
+
+    codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+    skills_root = codex_home / "skills"
+    skills: list[dict[str, str]] = []
+    if skills_root.exists():
+        for child in sorted(skills_root.iterdir()):
+            skill_md = child / "SKILL.md"
+            if child.is_dir() and skill_md.exists():
+                skills.append({"name": child.name, "path": str(skill_md)})
+
+    return {
+        "generated_at_utc": utc_now(),
+        "repo_root": str(repo_root),
+        "commands": command_status,
+        "mcp_servers_discovered": discovered_servers,
+        "skills_root": str(skills_root),
+        "skills": skills,
+    }
+
+
 def find_pdf(repo_root: Path, explicit_pdf: Path | None) -> Path | None:
     if explicit_pdf and explicit_pdf.exists():
         return explicit_pdf.resolve()
@@ -478,6 +510,12 @@ def main() -> int:
     parser.add_argument("--skip-lint", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-science", action="store_true")
+    parser.add_argument(
+        "--tier-c-justification",
+        type=str,
+        default="",
+        help="One-line reason to allow Tier C physics exploration when RUN_OVERRIDE_TIER_C=1",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -492,6 +530,7 @@ def main() -> int:
 
     for p in [logs_dir, results_dir, tmp_dir, results_dir / "contracts", results_dir / "sdk_validation", results_dir / "science" / "campaign", results_dir / "selection"]:
         p.mkdir(parents=True, exist_ok=True)
+    write_json(results_dir / "capabilities.json", {"generated_at_utc": utc_now(), "status": "NOT_COLLECTED"})
 
     events_path = logs_dir / "workflow_events.jsonl"
 
@@ -596,6 +635,20 @@ def main() -> int:
                 "discovery_log": "logs/mcporter_list.txt",
                 "servers": discovered,
             }
+
+            capabilities = discover_capabilities(repo_root, discovered)
+            write_json(results_dir / "capabilities.json", capabilities)
+            manifest["capabilities"] = {"path": "results/capabilities.json", "skills_count": len(capabilities["skills"])}
+            record_event(
+                events_path,
+                step,
+                "capability_discovery",
+                {
+                    "commands_available": [k for k, v in capabilities["commands"].items() if v["available"]],
+                    "skills_count": len(capabilities["skills"]),
+                    "mcp_servers": discovered,
+                },
+            )
 
             if compute_target is None:
                 mode = "LOCAL_ONLY"
@@ -962,70 +1015,53 @@ def main() -> int:
         manifest["steps"][step] = {"name": "Exploration campaign", "status": "RUNNING"}
         record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
-        proposals = [
-            {
-                "test_id": "claim3p_ising_cyclic_l8",
-                "target_claims": ["Claim_3P"],
-                "hypothesis": "Boundary conditions change model-selection stability at fixed L=8.",
-                "metrics": ["delta_aic", "delta_bic", "fidelity"],
-                "falsifier": "P3.4 remains rejected across boundary condition.",
-                "estimated_minutes": 6,
-                "placement": "local" if mode == "LOCAL_ONLY" else "mcp_compute",
-                "command": "exp3_claim3_physical_convergence_runner_v2.py --model ising_cyclic",
-            },
-            {
-                "test_id": "claim3p_heisenberg_cyclic_l8",
-                "target_claims": ["Claim_3P"],
-                "hypothesis": "Heisenberg cyclic branch should execute and provide independent model matrix evidence.",
-                "metrics": ["delta_aic", "delta_bic", "fidelity"],
-                "falsifier": "argparse or execution failure for heisenberg_cyclic.",
-                "estimated_minutes": 8,
-                "placement": "local" if mode == "LOCAL_ONLY" else "mcp_compute",
-                "command": "exp3_claim3_physical_convergence_runner_v2.py --model heisenberg_cyclic",
-            },
-            {
-                "test_id": "claim3_optionb_regime_check",
-                "target_claims": ["Claim_3"],
-                "hypothesis": "Cross-partition run can reduce ambiguity in regime classification.",
-                "metrics": ["winner_by_aic", "bridge_r"],
-                "falsifier": "Model ranking remains unstable under additional seeds.",
-                "estimated_minutes": 5,
-                "placement": "local",
-                "command": "exp3_claim3_optionB_runner.py with focused chi grid",
-            },
-            {
-                "test_id": "claim2_seed_perturbation",
-                "target_claims": ["Claim_2"],
-                "hypothesis": "Capacity savings signal remains under changed seed.",
-                "metrics": ["savings_ratio"],
-                "falsifier": "Savings ratio collapses near 1.0.",
-                "estimated_minutes": 3,
-                "placement": "local",
-                "command": "exp2_mera_tradeoff.py --seed 321",
-            },
-            {
-                "test_id": "claim3p_l16_gate",
-                "target_claims": ["Claim_3P"],
-                "hypothesis": "L=16 run sharpens asymptotic trend classification.",
-                "metrics": ["delta_aic", "delta_bic"],
-                "falsifier": "No trend improvement at larger L.",
-                "estimated_minutes": 15,
-                "placement": "mcp_compute",
-                "command": "exp3_claim3_physical_convergence_runner_v2.py --L 16",
-            },
+        proposal_json = results_dir / "science" / "exploration_proposals.json"
+        proposal_md = results_dir / "science" / "exploration_proposals.md"
+        planner_cmd = [
+            python_exe,
+            "tools/plan_framework_selection_tests.py",
+            "--repo-root",
+            str(repo_root),
+            "--artifacts-root",
+            str(run_dir),
+            "--catalog",
+            "docs/physics/framework_selection_test_catalog_v1.json",
+            "--max-minutes",
+            str(args.max_minutes),
+            "--max-runs",
+            str(args.max_runs),
+            "--output-json",
+            str(proposal_json),
+            "--output-md",
+            str(proposal_md),
         ]
-        write_json(results_dir / "science" / "exploration_proposals.json", {"generated_at_utc": utc_now(), "proposals": proposals})
+        compute_target = str(manifest.get("mcp_targets", {}).get("compute_target") or "").strip()
+        if compute_target:
+            planner_cmd.extend(["--compute-target", compute_target])
+        if mode == "LOCAL_ONLY":
+            planner_cmd.append("--local-only")
+        if args.tier_c_justification.strip():
+            planner_cmd.extend(["--tier-c-justification", args.tier_c_justification.strip()])
 
-        selected: list[dict[str, Any]] = []
-        remaining_minutes = args.max_minutes
-        for p in proposals:
-            if len(selected) >= args.max_runs:
-                break
-            if p["estimated_minutes"] <= remaining_minutes:
-                selected.append(p)
-                remaining_minutes -= int(p["estimated_minutes"])
-            if mode == "LOCAL_ONLY" and len(selected) >= 2:
-                break
+        planner = run_command(
+            run_dir=run_dir,
+            manifest=manifest,
+            events_path=events_path,
+            step=step,
+            name="plan_framework_selection_tests",
+            command=planner_cmd,
+            cwd=repo_root,
+        )
+        if planner["exit_code"] != 0:
+            stop_reason = "Framework-selection planner failed"
+            stop_classification = "RUNTIME_FAILURE"
+            mode = "STOPPED"
+            raise RuntimeError(stop_reason)
+
+        plan_obj = json.loads(proposal_json.read_text(encoding="utf-8"))
+        proposals = plan_obj.get("proposals", [])
+        selected = plan_obj.get("selected", [])
+        remaining_minutes = int(plan_obj.get("remaining_minutes", args.max_minutes))
 
         write_json(
             results_dir / "science" / "exploration_selected.json",
@@ -1034,15 +1070,19 @@ def main() -> int:
                 "budget_start_minutes": args.max_minutes,
                 "budget_remaining_minutes": remaining_minutes,
                 "selected": selected,
+                "stop_condition": plan_obj.get("stop_condition", {}),
             },
         )
 
         campaign_rows: list[dict[str, Any]] = []
         model_comparison: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
+        skipped_tests: list[str] = []
 
         if not args.skip_science:
             for test in selected:
-                test_id = test["test_id"]
+                test_id = test.get("execution_key") or test["test_id"]
+                chi_label = "2,4"
+                seed_used = str(args.seed)
                 if test_id == "claim3p_ising_cyclic_l8":
                     output_root = results_dir / "science" / "claim3p_cyclic_L8"
                     cmd = [
@@ -1113,13 +1153,58 @@ def main() -> int:
                     ]
                     model_name = "optionB"
                     L = 32
+                    chi_label = "2,4,8"
+                    seed_used = str(args.seed + 7)
                 elif test_id == "claim2_seed_perturbation":
                     output_root = results_dir / "science" / "claim2_seed321"
                     cmd = [python_exe, str(runners["claim2"]), "--output", str(output_root), "--seed", "321"]
                     model_name = "claim2"
                     L = 0
+                    chi_label = "n/a"
+                    seed_used = "321"
+                elif test_id == "claim3p_l16_gate":
+                    output_root = results_dir / "science" / "claim3p_cyclic_L16"
+                    cmd = [
+                        python_exe,
+                        str(runners["claim3p"]),
+                        "--L",
+                        "16",
+                        "--A_size",
+                        "8",
+                        "--model",
+                        "ising_cyclic",
+                        "--chi_sweep",
+                        "2,4,8",
+                        "--restarts_per_chi",
+                        "1",
+                        "--fit_steps",
+                        "40",
+                        "--seed",
+                        str(args.seed),
+                        "--output",
+                        str(output_root),
+                    ]
+                    model_name = "ising_cyclic"
+                    L = 16
+                    chi_label = "2,4,8"
+                elif test_id == "platform_openclaw_opt_check":
+                    output_root = results_dir / "science" / "platform_openclaw_opt_check"
+                    output_root.mkdir(parents=True, exist_ok=True)
+                    cmd = [python_exe, "tools/openclaw_opt_check.py", "--output", str(output_root / "openclaw_opt_check.json")]
+                    model_name = "platform"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = "n/a"
+                elif test_id == "platform_mcporter_health_snapshot":
+                    output_root = results_dir / "science" / "platform_mcporter_health_snapshot"
+                    output_root.mkdir(parents=True, exist_ok=True)
+                    cmd = ["mcporter", "list"]
+                    model_name = "platform"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = "n/a"
                 else:
-                    # Skip compute-heavy placeholder in LOCAL_ONLY mode.
+                    skipped_tests.append(str(test_id))
                     continue
 
                 c_entry = run_command(
@@ -1131,6 +1216,11 @@ def main() -> int:
                     command=cmd,
                     cwd=repo_root,
                 )
+                if test_id == "platform_mcporter_health_snapshot":
+                    (output_root / "mcporter_list.txt").write_text(
+                        read_text(run_dir / c_entry["log_path"]),
+                        encoding="utf-8",
+                    )
                 artifact_path = find_latest_subdir(output_root) or output_root
                 verdict_path = artifact_path / "verdict.json"
                 verdict = "NOT_RUN"
@@ -1145,6 +1235,10 @@ def main() -> int:
                     delta_aic = p34.get("delta_aic")
                     delta_bic = p34.get("delta_bic")
                     key_metrics = verdict_obj.get("metrics", {}) if isinstance(verdict_obj.get("metrics"), dict) else {}
+                elif c_entry["exit_code"] == 0:
+                    verdict = "PASS"
+                else:
+                    verdict = "FAIL"
 
                 campaign_rows.append(
                     {
@@ -1152,8 +1246,8 @@ def main() -> int:
                         "test_id": test_id,
                         "model": model_name,
                         "L": L,
-                        "chi": "2,4,8" if model_name == "optionB" else "2,4",
-                        "seed": args.seed,
+                        "chi": chi_label,
+                        "seed": seed_used,
                         "key_metrics": json.dumps(key_metrics),
                         "aic_delta": "" if delta_aic is None else delta_aic,
                         "bic_delta": "" if delta_bic is None else delta_bic,
@@ -1210,6 +1304,11 @@ def main() -> int:
             )
         if not campaign_rows:
             report_lines.append("| none | NOT_RUN |  |  |  |")
+        if skipped_tests:
+            report_lines.append("")
+            report_lines.append("## Skipped Planned Tests")
+            for test_id in skipped_tests:
+                report_lines.append(f"- {test_id}")
 
         (results_dir / "science" / "campaign" / "campaign_report.md").write_text(
             "\n".join(report_lines) + "\n",
@@ -1350,6 +1449,7 @@ def main() -> int:
                 "sdk_validation": "results/sdk_validation",
                 "science": "results/science",
                 "selection": "results/selection",
+                "capabilities": "results/capabilities.json",
                 "workflow_status": "results/workflow_auto_status.json",
             },
             "generated_at_utc": utc_now(),
@@ -1364,6 +1464,7 @@ def main() -> int:
                 "sdk_validation": {"path": "results/sdk_validation"},
                 "science": {"path": "results/science"},
                 "selection": {"path": "results/selection"},
+                "capabilities": {"path": "results/capabilities.json"},
                 "VERDICT": {"path": "results/VERDICT.json"},
             },
         }
@@ -1466,6 +1567,7 @@ def main() -> int:
                         "sdk_validation": {"path": "results/sdk_validation"},
                         "science": {"path": "results/science"},
                         "selection": {"path": "results/selection"},
+                        "capabilities": {"path": "results/capabilities.json"},
                         "VERDICT": {"path": "results/VERDICT.json"},
                     },
                 },

@@ -1,0 +1,141 @@
+{
+  "version": "1.0",
+  "source_pdf": "/Users/meganpastore/Clawdbot/Repos/capacity-demo/Framework with selection.pdf",
+  "step0_contract": {
+    "decision_questions": [
+      "What decision changes if this test passes vs fails?",
+      "Which critical path objective does it serve?"
+    ],
+    "critical_path_objectives": {
+      "A": "Platform readiness (MCP execution, contract suite, artifact retention, reproducibility, fail-modes)",
+      "B": "Supported claims regression (Claim 2, Claim 3)",
+      "C": "Research branch exploration (Claim 3P, speculative variants)"
+    },
+    "tier_rules": {
+      "A": "always_allowed",
+      "B": "allowed_if_protects_supported_claim_or_prevents_regression",
+      "C": "blocked_unless_override"
+    }
+  },
+  "tests": [
+    {
+      "test_id": "platform_openclaw_opt_check",
+      "title": "OpenClaw optimization and storage health check",
+      "tier": "A",
+      "critical_path_objective": "A",
+      "target_claims": [
+        "platform_readiness"
+      ],
+      "decision_if_pass": "Keep autonomous loop enabled and proceed to regression/science execution.",
+      "decision_if_fail": "Stop long campaigns and remediate memory/compaction/governance setup first.",
+      "estimated_minutes": 3,
+      "requires_compute": false,
+      "hardening_task": true,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "platform_openclaw_opt_check"
+    },
+    {
+      "test_id": "platform_mcporter_health_snapshot",
+      "title": "MCP target discovery and availability snapshot",
+      "tier": "A",
+      "critical_path_objective": "A",
+      "target_claims": [
+        "platform_readiness"
+      ],
+      "decision_if_pass": "Permit compute-routed jobs and full budget scheduling when available.",
+      "decision_if_fail": "Force LOCAL_ONLY mode and constrain exploration budget to safe defaults.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": true,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "platform_mcporter_health_snapshot"
+    },
+    {
+      "test_id": "claim3_optionb_regime_check",
+      "title": "Claim 3 Option-B regression stability check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "Claim_3"
+      ],
+      "decision_if_pass": "Maintain supported Claim 3 status and continue with current model family assumptions.",
+      "decision_if_fail": "Downgrade Claim 3 support and prioritize model-robustness follow-up tests.",
+      "estimated_minutes": 8,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim3_optionb_regime_check"
+    },
+    {
+      "test_id": "claim2_seed_perturbation",
+      "title": "Claim 2 seed perturbation regression check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "Claim_2"
+      ],
+      "decision_if_pass": "Keep Claim 2 marked stable under seed variation.",
+      "decision_if_fail": "Mark Claim 2 as unstable and require expanded seed coverage before promotion.",
+      "estimated_minutes": 4,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim2_seed_perturbation"
+    },
+    {
+      "test_id": "claim3p_ising_cyclic_l8",
+      "title": "Claim 3P cyclic Ising branch check at L=8",
+      "tier": "C",
+      "critical_path_objective": "C",
+      "target_claims": [
+        "Claim_3P"
+      ],
+      "decision_if_pass": "Increase confidence that Claim 3P model-selection failures are boundary-robust.",
+      "decision_if_fail": "Keep Claim 3P underdetermined/rejected and prioritize falsifier-specific ablations.",
+      "estimated_minutes": 8,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": false,
+      "prevents_regression": false,
+      "execution_key": "claim3p_ising_cyclic_l8"
+    },
+    {
+      "test_id": "claim3p_heisenberg_cyclic_l8",
+      "title": "Claim 3P cyclic Heisenberg branch check at L=8",
+      "tier": "C",
+      "critical_path_objective": "C",
+      "target_claims": [
+        "Claim_3P"
+      ],
+      "decision_if_pass": "Strengthen cross-model evidence that Claim 3P behavior is reproducible.",
+      "decision_if_fail": "Constrain interpretation and document model-specific divergence.",
+      "estimated_minutes": 10,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": false,
+      "prevents_regression": false,
+      "execution_key": "claim3p_heisenberg_cyclic_l8"
+    },
+    {
+      "test_id": "claim3p_l16_gate",
+      "title": "Claim 3P larger-system check at L=16",
+      "tier": "C",
+      "critical_path_objective": "C",
+      "target_claims": [
+        "Claim_3P"
+      ],
+      "decision_if_pass": "Promote L-scaling evidence quality for Claim 3P trend interpretation.",
+      "decision_if_fail": "Preserve conservative status and defer stronger claims.",
+      "estimated_minutes": 20,
+      "requires_compute": true,
+      "hardening_task": false,
+      "protects_supported_claim": false,
+      "prevents_regression": false,
+      "execution_key": "claim3p_l16_gate"
+    }
+  ]
+}
