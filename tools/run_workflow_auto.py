@@ -148,16 +148,23 @@ def run_command(
     )
 
     with log_path.open("w", encoding="utf-8") as fout:
-        proc = subprocess.run(
-            command,
-            cwd=str(cwd),
-            env=env,
-            stdout=fout,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        rc = proc.returncode
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=str(cwd),
+                env=env,
+                stdout=fout,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+            )
+            rc = proc.returncode
+        except FileNotFoundError as exc:
+            fout.write(f"FileNotFoundError: {exc}\n")
+            rc = 127
+        except Exception as exc:  # noqa: BLE001
+            fout.write(f"Unhandled exception while executing command: {exc}\n")
+            rc = 1
 
     ended = time.time()
     ended_iso = utc_now()

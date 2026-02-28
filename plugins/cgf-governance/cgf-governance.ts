@@ -52,10 +52,10 @@ const TOOL_HIGH_RISK_RE =
   /(write|edit|delete|remove|exec|shell|bash|python|apply_patch|install|uninstall|restart|kill)/i;
 const TOOL_LOW_RISK_RE = /(read|list|get|find|search|query|status|health|ls|cat|fetch)/i;
 const WORKFLOW_AUTO_ALLOWED_RE = [
-  /\bmake\b[^\n\r]*\bworkflow-auto\b/i,
-  /\bmake\b[^\n\r]*\bworkflow-audit\b/i,
-  /\bpython3?\b[^\n\r]*\btools\/run_workflow_auto\.py\b/i,
-  /\bpython3?\b[^\n\r]*\btools\/validate_workflow_auto_run\.py\b/i,
+  /\bmake\b[\s\S]*\bworkflow-auto\b/i,
+  /\bmake\b[\s\S]*\bworkflow-audit\b/i,
+  /\bpython3?\b[\s\S]*\btools\/run_workflow_auto\.py\b/i,
+  /\bpython3?\b[\s\S]*\btools\/validate_workflow_auto_run\.py\b/i,
 ];
 const WORKFLOW_AUTO_REPO_RE = /\/tmp\/openclaws\/Repos\/host-adapters\b/i;
 
