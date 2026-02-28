@@ -1,7 +1,27 @@
 {
   "policy_version": "1.0.0",
-  "bundle_hash": "9e172b102bbd01609c0e3ab53df893bdeabd160b4a957736e514ce8153a46f34",
+  "bundle_hash": "e5922e081254c8e6a429c1b81dd3c6e1e1686284de077a305a89ceef185627ab",
   "rules": [
+    {
+      "id": "workflow-auto-exec-audit",
+      "priority": 110,
+      "when": [
+        {
+          "field": "proposal.action_type",
+          "op": "eq",
+          "value": "tool_call"
+        },
+        {
+          "field": "proposal.tool_name",
+          "op": "eq",
+          "value": "workflow_auto_exec"
+        }
+      ],
+      "decision": "AUDIT",
+      "constraint": null,
+      "audit": true,
+      "confidence": 0.95
+    },
     {
       "id": "denylisted-tool",
       "priority": 100,

@@ -51,6 +51,13 @@ const DEFAULTS: PluginConfig = {
 const TOOL_HIGH_RISK_RE =
   /(write|edit|delete|remove|exec|shell|bash|python|apply_patch|install|uninstall|restart|kill)/i;
 const TOOL_LOW_RISK_RE = /(read|list|get|find|search|query|status|health|ls|cat|fetch)/i;
+const WORKFLOW_AUTO_ALLOWED_RE = [
+  /\bmake\b[^\n\r]*\bworkflow-auto\b/i,
+  /\bmake\b[^\n\r]*\bworkflow-audit\b/i,
+  /\bpython3?\b[^\n\r]*\btools\/run_workflow_auto\.py\b/i,
+  /\bpython3?\b[^\n\r]*\btools\/validate_workflow_auto_run\.py\b/i,
+];
+const WORKFLOW_AUTO_REPO_RE = /\/tmp\/openclaws\/Repos\/host-adapters\b/i;
 
 const state = {
   adapterId: "",
@@ -177,6 +184,48 @@ function sideEffectsHint(toolName: string): string[] {
   return ["network"];
 }
 
+function commandTextFromParams(params: unknown): string {
+  if (!params) return "";
+  if (typeof params === "string") return params;
+  if (Array.isArray(params)) return params.map((x) => String(x)).join(" ");
+  if (typeof params !== "object") return String(params);
+  const rec = params as Record<string, unknown>;
+
+  const stringKeys = ["cmd", "command", "script", "sh", "shell"];
+  for (const k of stringKeys) {
+    if (typeof rec[k] === "string" && rec[k]) return rec[k] as string;
+  }
+
+  if (Array.isArray(rec.argv)) return rec.argv.map((x) => String(x)).join(" ");
+  if (Array.isArray(rec.args)) return rec.args.map((x) => String(x)).join(" ");
+
+  return stableStringify(params);
+}
+
+function classifyPolicyTool(
+  toolName: string,
+  params: unknown,
+): { policyToolName: string; aliasApplied: boolean; aliasReason?: string; commandText: string } {
+  const commandText = commandTextFromParams(params);
+  const scopeText = `${commandText}\n${stableStringify(params)}`;
+  if (toolName !== "exec") {
+    return { policyToolName: toolName, aliasApplied: false, commandText };
+  }
+
+  const matchesWorkflowCommand = WORKFLOW_AUTO_ALLOWED_RE.some((re) => re.test(commandText));
+  const matchesRepoScope = WORKFLOW_AUTO_REPO_RE.test(scopeText);
+  if (matchesWorkflowCommand && matchesRepoScope) {
+    return {
+      policyToolName: "workflow_auto_exec",
+      aliasApplied: true,
+      aliasReason: "exec command matched workflow-auto allowlist",
+      commandText,
+    };
+  }
+
+  return { policyToolName: toolName, aliasApplied: false, commandText };
+}
+
 function resolveFailMode(
   actionType: "tool_call" | "memory_write",
   riskTier: "low" | "medium" | "high",
@@ -271,7 +320,9 @@ async function evaluateToolCall(
   event: PluginHookBeforeToolCallEvent,
   ctx: PluginHookToolContext,
 ): Promise<{ decision: string; decisionId: string; proposalId: string; maybeParams?: JsonMap }> {
-  const riskTier = classifyToolRisk(event.toolName);
+  const toolClass = classifyPolicyTool(event.toolName, event.params);
+  const policyToolName = toolClass.policyToolName;
+  const riskTier = classifyToolRisk(policyToolName);
   const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const paramsHash = hashInput(event.params);
 
@@ -290,10 +341,10 @@ async function evaluateToolCall(
       timestamp: nowSec(),
       action_type: "tool_call",
       action_params: {
-        tool_name: event.toolName,
+        tool_name: policyToolName,
         tool_args_hash: paramsHash,
         estimated_tokens: Math.ceil(stableStringify(event.params).length / 4),
-        side_effects_hint: sideEffectsHint(event.toolName),
+        side_effects_hint: sideEffectsHint(policyToolName),
       },
       context_refs: [ctx.sessionKey || "session:unknown", ctx.agentId || "agent:unknown"],
       estimated_cost: {
@@ -333,8 +384,17 @@ async function evaluateToolCall(
       decision_id: decisionId,
       decision,
       tool_name: event.toolName,
+      policy_tool_name: policyToolName,
       session_key: ctx.sessionKey || null,
     });
+    if (toolClass.aliasApplied) {
+      logEvidence(config, "tool_alias_applied", {
+        tool_name: event.toolName,
+        policy_tool_name: policyToolName,
+        reason: toolClass.aliasReason || "policy alias",
+        command_excerpt: toolClass.commandText.slice(0, 200),
+      });
+    }
 
     let maybeParams: JsonMap | undefined;
     if (decision === "CONSTRAIN" && maybeConstraint?.type === "drop_params_keys") {
@@ -357,6 +417,7 @@ async function evaluateToolCall(
     logEvidence(config, "cgf_unreachable", {
       stage: "evaluate_tool_call",
       tool_name: event.toolName,
+      policy_tool_name: policyToolName,
       risk_tier: riskTier,
       fail_mode_allow: fail.allow,
       error: String(error),

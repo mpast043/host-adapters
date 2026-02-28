@@ -53,3 +53,13 @@ Expected evidence includes:
 - `adapter_registered`
 - `decision_made`
 - `outcome_logged`
+
+## Workflow Auto Under CGF
+
+Raw `exec` remains denylisted by policy. The governance plugin applies a narrow alias:
+
+- `exec` commands that match the workflow allowlist (`make workflow-auto`, `make workflow-audit`, `tools/run_workflow_auto.py`, `tools/validate_workflow_auto_run.py`) under `/tmp/openclaws/Repos/host-adapters`
+- are mapped to policy tool name `workflow_auto_exec`
+- and evaluated by the `workflow-auto-exec-audit` rule in `policy/policy_bundle_v1.json`.
+
+This keeps broad `exec` blocked while allowing audited workflow operations.
