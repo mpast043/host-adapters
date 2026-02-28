@@ -1,6 +1,6 @@
 {
   "policy_version": "1.0.0",
-  "bundle_hash": "e5922e081254c8e6a429c1b81dd3c6e1e1686284de077a305a89ceef185627ab",
+  "bundle_hash": "598b95472c3594c85486acf855a288d5d0a5019c28acafba99779d4c62fabbea",
   "rules": [
     {
       "id": "workflow-auto-exec-audit",
@@ -21,6 +21,31 @@
       "constraint": null,
       "audit": true,
       "confidence": 0.95
+    },
+    {
+      "id": "small-write-audit",
+      "priority": 105,
+      "when": [
+        {
+          "field": "proposal.action_type",
+          "op": "eq",
+          "value": "tool_call"
+        },
+        {
+          "field": "proposal.tool_name",
+          "op": "eq",
+          "value": "write"
+        },
+        {
+          "field": "proposal.estimated_cost.tokens",
+          "op": "lte",
+          "value": 1500
+        }
+      ],
+      "decision": "AUDIT",
+      "constraint": null,
+      "audit": true,
+      "confidence": 0.9
     },
     {
       "id": "denylisted-tool",
