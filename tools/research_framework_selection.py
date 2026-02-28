@@ -72,7 +72,9 @@ def focus_queries(focus_objective: str) -> list[str]:
 
 def load_local_signal_queries(run_dir: Path) -> tuple[list[str], dict[str, Any]]:
     campaign_csv = run_dir / "results" / "science" / "campaign" / "campaign_index.csv"
-    status_json = run_dir / "results" / "workflow_auto_status.json"
+    status_json = run_dir / "results" / "workflow_auto_status_latest.json"
+    if not status_json.exists():
+        status_json = run_dir / "results" / "workflow_auto_status.json"
     suggested: list[str] = []
     signals: dict[str, Any] = {
         "failed_tests": [],

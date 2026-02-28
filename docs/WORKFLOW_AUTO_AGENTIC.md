@@ -47,3 +47,6 @@ make workflow-auto-supervisor DATA_REPO=/tmp/openclaws/Repos/host-adapters-exper
   - `RUN_*/results/agentic/executor_result_cycle_*.json`
 - Agentic event ledger:
   - `RUN_*/logs/agentic_events.jsonl`
+- Live monitoring brief (updated every cycle):
+  - `RUN_*/results/agentic/live_brief.md`
+  - `RUN_*/results/agentic/live_brief_history.jsonl`

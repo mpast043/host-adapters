@@ -51,6 +51,99 @@ def append_event(path: Path, event: dict[str, Any]) -> None:
         f.write(json.dumps(event) + "\n")
 
 
+def write_live_brief(
+    *,
+    path: Path,
+    history_path: Path,
+    run_dir: Path,
+    cycle: int,
+    cycle_label: str,
+    seed: int,
+    focus_objective: str,
+    tier_c_override: bool,
+    underdetermined_streak: int,
+    planner_event: dict[str, Any],
+    research_event: dict[str, Any] | None,
+    executor_event: dict[str, Any] | None,
+) -> None:
+    planner_result = planner_event.get("result") or {}
+    research_result = (research_event or {}).get("result") or {}
+    executor_result = (executor_event or {}).get("result") or {}
+
+    selected = planner_result.get("selected_execution_keys") or []
+    recommended = research_result.get("recommended_execution_keys") or []
+    mode = str(executor_result.get("mode", "UNKNOWN")).upper()
+    overall = str(executor_result.get("overall_status", "UNKNOWN")).upper()
+    selection = str(executor_result.get("selection_status", "UNKNOWN")).upper()
+
+    lines = [
+        "# Workflow Physics Live Brief",
+        "",
+        f"- Generated UTC: `{utc_now()}`",
+        f"- Run: `{run_dir.name}`",
+        f"- Cycle: `{cycle_label}` (seed `{seed}`)",
+        f"- Focus objective: `{focus_objective}`",
+        f"- Tier C override: `{'on' if tier_c_override else 'off'}`",
+        f"- Underdetermined streak: `{underdetermined_streak}`",
+        "",
+        "## Role Status",
+        f"- Planner exit: `{planner_event.get('worker_exit_code')}`",
+        f"- Researcher exit: `{(research_event or {}).get('worker_exit_code', 'not-run')}`",
+        f"- Executor exit: `{(executor_event or {}).get('worker_exit_code', 'not-run')}`",
+        "",
+        "## Current Outcome",
+        f"- Overall: `{overall}`",
+        f"- Mode: `{mode}`",
+        f"- Selection: `{selection}`",
+        "",
+        "## Planned Execution Keys",
+    ]
+    if selected:
+        lines.extend([f"- `{key}`" for key in selected])
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Research Recommendations"])
+    if recommended:
+        lines.extend([f"- `{key}`" for key in recommended])
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Artifact Pointers",
+            f"- `{run_dir}/results/workflow_auto_status_latest.json`",
+            f"- `{run_dir}/results/VERDICT_latest.json`",
+            f"- `{run_dir}/results/science/campaign/campaign_report.md`",
+            f"- `{run_dir}/results/selection/selection_report.md`",
+            f"- `{run_dir}/logs/agentic_events.jsonl`",
+        ]
+    )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    history_row = {
+        "ts_utc": utc_now(),
+        "cycle": cycle,
+        "cycle_label": cycle_label,
+        "seed": seed,
+        "focus_objective": focus_objective,
+        "tier_c_override": tier_c_override,
+        "underdetermined_streak": underdetermined_streak,
+        "selected_execution_keys": selected,
+        "recommended_execution_keys": recommended,
+        "overall_status": overall,
+        "mode": mode,
+        "selection_status": selection,
+        "run_dir": str(run_dir),
+    }
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(history_row) + "\n")
+
+
 def run_role(
     *,
     role: str,
@@ -187,6 +280,8 @@ def main() -> int:
 
     agentic_dir = run_dir / "results" / "agentic"
     events_path = run_dir / "logs" / "agentic_events.jsonl"
+    live_brief_path = run_dir / "results" / "agentic" / "live_brief.md"
+    live_brief_history = run_dir / "results" / "agentic" / "live_brief_history.jsonl"
 
     underdetermined_streak = 0
     dynamic_tier_c = False
@@ -230,6 +325,20 @@ def main() -> int:
         append_event(events_path, {"ts_utc": utc_now(), "event": "planner_finished", **planner_event})
 
         if planner_event["worker_exit_code"] != 0:
+            write_live_brief(
+                path=live_brief_path,
+                history_path=live_brief_history,
+                run_dir=run_dir,
+                cycle=cycle,
+                cycle_label=cycle_label,
+                seed=seed,
+                focus_objective=args.focus_objective,
+                tier_c_override=tier_c_enabled,
+                underdetermined_streak=underdetermined_streak,
+                planner_event=planner_event,
+                research_event=None,
+                executor_event=None,
+            )
             print("[workflow-auto-agentic] planner failed")
             return 1
 
@@ -252,6 +361,20 @@ def main() -> int:
             )
             append_event(events_path, {"ts_utc": utc_now(), "event": "researcher_finished", **research_event})
             if research_event["worker_exit_code"] != 0:
+                write_live_brief(
+                    path=live_brief_path,
+                    history_path=live_brief_history,
+                    run_dir=run_dir,
+                    cycle=cycle,
+                    cycle_label=cycle_label,
+                    seed=seed,
+                    focus_objective=args.focus_objective,
+                    tier_c_override=tier_c_enabled,
+                    underdetermined_streak=underdetermined_streak,
+                    planner_event=planner_event,
+                    research_event=research_event,
+                    executor_event=None,
+                )
                 print("[workflow-auto-agentic] researcher failed")
                 return 1
 
@@ -286,6 +409,20 @@ def main() -> int:
         append_event(events_path, {"ts_utc": utc_now(), "event": "executor_finished", **executor_event})
 
         if executor_event["worker_exit_code"] != 0:
+            write_live_brief(
+                path=live_brief_path,
+                history_path=live_brief_history,
+                run_dir=run_dir,
+                cycle=cycle,
+                cycle_label=cycle_label,
+                seed=seed,
+                focus_objective=args.focus_objective,
+                tier_c_override=dynamic_tier_c or tier_c_enabled,
+                underdetermined_streak=underdetermined_streak,
+                planner_event=planner_event,
+                research_event=research_event,
+                executor_event=executor_event,
+            )
             print("[workflow-auto-agentic] executor failed")
             return 1
 
@@ -300,6 +437,21 @@ def main() -> int:
         print(
             "[workflow-auto-agentic] "
             f"run={run_dir.name} overall={overall} mode={mode} selection={selection}"
+        )
+
+        write_live_brief(
+            path=live_brief_path,
+            history_path=live_brief_history,
+            run_dir=run_dir,
+            cycle=cycle,
+            cycle_label=cycle_label,
+            seed=seed,
+            focus_objective=args.focus_objective,
+            tier_c_override=dynamic_tier_c or tier_c_enabled,
+            underdetermined_streak=underdetermined_streak,
+            planner_event=planner_event,
+            research_event=research_event,
+            executor_event=executor_event,
         )
 
         if mode == "STOPPED" or overall == "STOPPED":

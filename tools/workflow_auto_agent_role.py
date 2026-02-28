@@ -31,6 +31,14 @@ def load_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def load_result_json(results_dir: Path, filename: str) -> dict[str, Any]:
+    target = results_dir / filename
+    latest = results_dir / f"{target.stem}_latest{target.suffix}"
+    if latest.exists():
+        return load_json(latest)
+    return load_json(target)
+
+
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -81,7 +89,7 @@ def role_planner(
     tier_c_justification: str,
     focus_objective: str,
 ) -> dict[str, Any]:
-    status = load_json(run_dir / "results" / "workflow_auto_status.json")
+    status = load_result_json(run_dir / "results", "workflow_auto_status.json")
     compute_target = str((status.get("mcp_targets") or {}).get("compute_target") or "")
 
     out_json = run_dir / "results" / "agentic" / f"planner_plan_cycle_{cycle:03d}.json"
@@ -227,8 +235,8 @@ def role_executor(
     status = {}
     verdict = {}
     if run_dir is not None:
-        status = load_json(run_dir / "results" / "workflow_auto_status.json")
-        verdict = load_json(run_dir / "results" / "VERDICT.json")
+        status = load_result_json(run_dir / "results", "workflow_auto_status.json")
+        verdict = load_result_json(run_dir / "results", "VERDICT.json")
     return {
         "role": "executor",
         "ts_utc": utc_now(),

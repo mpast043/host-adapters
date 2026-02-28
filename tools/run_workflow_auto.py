@@ -50,6 +50,66 @@ def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
 
 
+def write_result_with_history(
+    *,
+    results_dir: Path,
+    filename: str,
+    obj: Any,
+    freeze_legacy: bool = True,
+) -> dict[str, str]:
+    """Write append-only snapshot + latest pointer, with optional legacy freeze.
+
+    - Always writes `results/history/<stem>_<timestamp>.json`
+    - Always writes `results/<stem>_latest.json`
+    - Writes/updates legacy `results/<filename>` only if it does not exist, or
+      when `freeze_legacy` is False.
+    """
+    target = results_dir / filename
+    stem = target.stem
+    suffix = target.suffix
+    ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+
+    history_dir = results_dir / "history"
+    snapshot = history_dir / f"{stem}_{ts}{suffix}"
+    latest = results_dir / f"{stem}_latest{suffix}"
+
+    legacy_preexists = target.exists()
+    legacy_updated = (not legacy_preexists) or (not freeze_legacy)
+
+    write_json(snapshot, obj)
+    write_json(latest, obj)
+    if legacy_updated:
+        write_json(target, obj)
+
+    index_row = {
+        "ts_utc": utc_now(),
+        "artifact": filename,
+        "snapshot_path": str(snapshot.relative_to(results_dir.parent)),
+        "latest_path": str(latest.relative_to(results_dir.parent)),
+        "legacy_path": str(target.relative_to(results_dir.parent)),
+        "legacy_updated": legacy_updated,
+    }
+    index_path = history_dir / "history_index.jsonl"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    with index_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(index_row) + "\n")
+
+    return {
+        "snapshot_path": str(snapshot.relative_to(results_dir.parent)),
+        "latest_path": str(latest.relative_to(results_dir.parent)),
+        "legacy_path": str(target.relative_to(results_dir.parent)),
+    }
+
+
+def load_result_json(results_dir: Path, filename: str) -> dict[str, Any] | None:
+    target = results_dir / filename
+    latest = results_dir / f"{target.stem}_latest{target.suffix}"
+    for candidate in (latest, target):
+        if candidate.exists():
+            return safe_load_json(candidate)
+    return None
+
+
 def read_text(path: Path) -> str:
     if not path.exists():
         return ""
@@ -905,8 +965,8 @@ def main() -> int:
     cgf_proc: subprocess.Popen[str] | None = None
     cgf_endpoint = "http://127.0.0.1:8080"
 
-    status_obj = safe_load_json(results_dir / "workflow_auto_status.json") if resume_enabled else None
-    verdict_obj = safe_load_json(results_dir / "VERDICT.json") if resume_enabled else None
+    status_obj = load_result_json(results_dir, "workflow_auto_status.json") if resume_enabled else None
+    verdict_obj = load_result_json(results_dir, "VERDICT.json") if resume_enabled else None
     if status_obj is not None:
         contract_status = str(status_obj.get("contract_status", contract_status))
         science_status = str(status_obj.get("science_status", science_status))
@@ -1906,8 +1966,6 @@ def main() -> int:
                 ],
             }
 
-            write_json(results_dir / "workflow_auto_status.json", workflow_status)
-
             verdict = {
                 "overall_status": overall_status,
                 "lint_status": lint_status,
@@ -1932,7 +1990,6 @@ def main() -> int:
                 },
                 "generated_at_utc": utc_now(),
             }
-            write_json(results_dir / "VERDICT.json", verdict)
 
             index_obj = {
                 "run_id": run_id,
@@ -1944,6 +2001,10 @@ def main() -> int:
                     "selection": {"path": "results/selection"},
                     "capabilities": {"path": "results/capabilities.json"},
                     "VERDICT": {"path": "results/VERDICT.json"},
+                    "VERDICT_latest": {"path": "results/VERDICT_latest.json"},
+                    "workflow_status": {"path": "results/workflow_auto_status.json"},
+                    "workflow_status_latest": {"path": "results/workflow_auto_status_latest.json"},
+                    "result_history": {"path": "results/history/history_index.jsonl"},
                 },
             }
             write_json(results_dir / "index.json", index_obj)
@@ -1982,7 +2043,18 @@ def main() -> int:
             retention = package_retention(run_dir, artifacts_root)
             retention_status = "PASS"
             workflow_status["retention_status"] = retention_status
-            write_json(results_dir / "workflow_auto_status.json", workflow_status)
+            write_result_with_history(
+                results_dir=results_dir,
+                filename="workflow_auto_status.json",
+                obj=workflow_status,
+                freeze_legacy=True,
+            )
+            write_result_with_history(
+                results_dir=results_dir,
+                filename="VERDICT.json",
+                obj=verdict,
+                freeze_legacy=True,
+            )
 
             manifest["steps"][step]["status"] = "PASS"
             record_event(events_path, step, "step_finished", {"status": "PASS", "retention": retention})
@@ -2018,21 +2090,27 @@ def main() -> int:
             "artifact_index": "results/index.json",
             "notes": [f"failure_classification={stop_classification}", f"failure_message={stop_reason}"],
         }
-        write_json(results_dir / "workflow_auto_status.json", fallback_status)
+        write_result_with_history(
+            results_dir=results_dir,
+            filename="workflow_auto_status.json",
+            obj=fallback_status,
+            freeze_legacy=True,
+        )
 
-        if not (results_dir / "VERDICT.json").exists():
-            write_json(
-                results_dir / "VERDICT.json",
-                {
-                    "overall_status": "STOPPED",
-                    "lint_status": lint_status,
-                    "contract_status": contract_status,
-                    "scientific_status": {"status": science_status},
-                    "selection_status": selection_status,
-                    "error": {"classification": stop_classification, "message": stop_reason},
-                    "generated_at_utc": utc_now(),
-                },
-            )
+        write_result_with_history(
+            results_dir=results_dir,
+            filename="VERDICT.json",
+            obj={
+                "overall_status": "STOPPED",
+                "lint_status": lint_status,
+                "contract_status": contract_status,
+                "scientific_status": {"status": science_status},
+                "selection_status": selection_status,
+                "error": {"classification": stop_classification, "message": stop_reason},
+                "generated_at_utc": utc_now(),
+            },
+            freeze_legacy=True,
+        )
 
         if not (results_dir / "index.json").exists():
             write_json(
@@ -2047,6 +2125,10 @@ def main() -> int:
                         "selection": {"path": "results/selection"},
                         "capabilities": {"path": "results/capabilities.json"},
                         "VERDICT": {"path": "results/VERDICT.json"},
+                        "VERDICT_latest": {"path": "results/VERDICT_latest.json"},
+                        "workflow_status": {"path": "results/workflow_auto_status.json"},
+                        "workflow_status_latest": {"path": "results/workflow_auto_status_latest.json"},
+                        "result_history": {"path": "results/history/history_index.jsonl"},
                     },
                 },
             )

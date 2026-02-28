@@ -25,6 +25,14 @@ def _load_json(path: Path) -> dict:
         return {}
 
 
+def _load_result_json(results_dir: Path, filename: str) -> dict:
+    target = results_dir / filename
+    latest = results_dir / f"{target.stem}_latest{target.suffix}"
+    if latest.exists():
+        return _load_json(latest)
+    return _load_json(target)
+
+
 def _latest_run_dir(artifacts_root: Path) -> Path | None:
     runs = [p for p in artifacts_root.glob("RUN_*") if p.is_dir()]
     if not runs:
@@ -85,8 +93,9 @@ def run_once(
 
 
 def read_status(run_dir: Path) -> tuple[str, str, str]:
-    status = _load_json(run_dir / "results" / "workflow_auto_status.json")
-    verdict = _load_json(run_dir / "results" / "VERDICT.json")
+    results_dir = run_dir / "results"
+    status = _load_result_json(results_dir, "workflow_auto_status.json")
+    verdict = _load_result_json(results_dir, "VERDICT.json")
     overall = str(verdict.get("overall_status", "UNKNOWN")).upper()
     mode = str(status.get("mode", "UNKNOWN")).upper()
     selection = str(status.get("selection_status", "UNKNOWN")).upper()

@@ -57,6 +57,9 @@ Stop-condition policy:
    - `results/science/campaign/campaign_index.csv`
    - `results/science/campaign/campaign_report.md`
    - per-test artifacts + verdicts
+4. Monitor live cycle summaries:
+   - `results/agentic/live_brief.md`
+   - `results/agentic/live_brief_history.jsonl`
 
 ## 5. Assess Stage (Selection + Verdict)
 
