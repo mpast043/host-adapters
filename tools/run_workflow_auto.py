@@ -1830,6 +1830,58 @@ def main() -> int:
                     L = 0
                     chi_label = "n/a"
                     seed_used = "n/a"
+                elif test_id == "claim_w03_memory_excision_consistency":
+                    output_root = results_dir / "science" / "claim_w03_memory_excision_consistency"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w03_memory_excision_consistency",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "3000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w04_self_reference_consistency":
+                    output_root = results_dir / "science" / "claim_w04_self_reference_consistency"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w04_self_reference_consistency",
+                        "--output",
+                        str(output_root),
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
+                elif test_id == "claim_w07_cross_axis_isolation":
+                    output_root = results_dir / "science" / "claim_w07_cross_axis_isolation"
+                    cmd = [
+                        python_exe,
+                        "tools/framework_claim_checks.py",
+                        "--check",
+                        "w07_cross_axis_isolation",
+                        "--output",
+                        str(output_root),
+                        "--samples",
+                        "3000",
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    model_name = "claim_check"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = str(args.seed)
                 elif test_id == "platform_openclaw_opt_check":
                     output_root = results_dir / "science" / "platform_openclaw_opt_check"
                     output_root.mkdir(parents=True, exist_ok=True)

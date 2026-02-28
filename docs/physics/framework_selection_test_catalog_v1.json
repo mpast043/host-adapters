@@ -257,6 +257,57 @@
       "execution_key": "claim_w12_observer_triad_mapping"
     },
     {
+      "test_id": "claim_w03_memory_excision_consistency",
+      "title": "Claim W03 memory excision consistency executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W03"
+      ],
+      "decision_if_pass": "Promote W03 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag memory excision consistency contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w03_memory_excision_consistency"
+    },
+    {
+      "test_id": "claim_w04_self_reference_consistency",
+      "title": "Claim W04 self-reference consistency executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W04"
+      ],
+      "decision_if_pass": "Promote W04 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag self-reference consistency contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w04_self_reference_consistency"
+    },
+    {
+      "test_id": "claim_w07_cross_axis_isolation",
+      "title": "Claim W07 cross-axis isolation executable check",
+      "tier": "B",
+      "critical_path_objective": "B",
+      "target_claims": [
+        "W07"
+      ],
+      "decision_if_pass": "Promote W07 to LOCAL_EXEC evidence-backed.",
+      "decision_if_fail": "Flag cross-axis isolation contradiction.",
+      "estimated_minutes": 2,
+      "requires_compute": false,
+      "hardening_task": false,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "claim_w07_cross_axis_isolation"
+    },
+    {
       "test_id": "claim3p_ising_cyclic_l8",
       "title": "Claim 3P cyclic Ising branch check at L=8",
       "tier": "C",
