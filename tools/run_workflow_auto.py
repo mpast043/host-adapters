@@ -518,6 +518,121 @@ def build_selection_outputs(
                 "witnesses": [str(pdf_path), "results/selection/evidence_index.json"],
             }
         )
+    elif focus == "B":
+        latest_by_test: dict[str, dict[str, Any]] = {}
+        for row in campaign_rows:
+            test_id = str(row.get("test_id", "")).strip()
+            if test_id:
+                latest_by_test[test_id] = row
+
+        def _status_for(test_id: str) -> tuple[str, str]:
+            row = latest_by_test.get(test_id)
+            if row is None:
+                return "UNDERDETERMINED", f"Missing test result for {test_id}."
+            verdict = str(row.get("verdict", "")).upper()
+            if verdict in {"PASS", "SUPPORTED", "ACCEPTED"}:
+                return "ACCEPTED", f"{test_id} passed."
+            if verdict in {"FAIL", "REJECTED"}:
+                return "REJECTED", f"{test_id} failed."
+            return "UNDERDETERMINED", f"{test_id} produced non-conclusive verdict '{verdict}'."
+
+        claim2_status, claim2_reason = _status_for("claim2_seed_perturbation")
+        claim3_status, claim3_reason = _status_for("claim3_optionb_regime_check")
+
+        rows.append(
+            {
+                "claim_id": "CLAIM_2_REGRESSION_TIER_B",
+                "status": claim2_status,
+                "rationale": claim2_reason,
+                "witnesses": ["results/science/campaign/campaign_index.csv"],
+                "next_test": "Expand Claim 2 seed sweep and compare stability envelopes." if claim2_status != "ACCEPTED" else "",
+            }
+        )
+        rows.append(
+            {
+                "claim_id": "CLAIM_3_OPTION_B_REGRESSION_TIER_B",
+                "status": claim3_status,
+                "rationale": claim3_reason,
+                "witnesses": ["results/science/campaign/campaign_index.csv"],
+                "next_test": "Run regime ablation and bootstrap confidence intervals." if claim3_status != "ACCEPTED" else "",
+            }
+        )
+
+        if "UNDERDETERMINED" in {claim2_status, claim3_status}:
+            tier_b_status = "UNDERDETERMINED"
+        elif "REJECTED" in {claim2_status, claim3_status}:
+            tier_b_status = "REJECTED"
+        else:
+            tier_b_status = "ACCEPTED"
+
+        rows.append(
+            {
+                "claim_id": "SUPPORTED_CLAIMS_TIER_B_SUMMARY",
+                "status": tier_b_status,
+                "rationale": "Tier B summary over Claim 2 and Claim 3 regression checks.",
+                "witnesses": ["results/science/campaign/campaign_index.csv", "results/science/campaign/campaign_report.md"],
+                "next_test": "Run missing or failed Tier B regressions to reach conclusive status." if tier_b_status == "UNDERDETERMINED" else "",
+            }
+        )
+
+        rows.append(
+            {
+                "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
+                "status": "ACCEPTED" if tier_b_status in {"ACCEPTED", "REJECTED"} else "UNDERDETERMINED",
+                "rationale": "PDF claims are mapped to Tier B executable regression evidence.",
+                "witnesses": [str(pdf_path), "results/selection/evidence_index.json"],
+            }
+        )
+    elif focus == "C":
+        latest_by_test: dict[str, dict[str, Any]] = {}
+        for row in campaign_rows:
+            test_id = str(row.get("test_id", "")).strip()
+            if test_id:
+                latest_by_test[test_id] = row
+
+        c_tests = ["claim3p_ising_cyclic_l8", "claim3p_heisenberg_cyclic_l8", "claim3p_l16_gate"]
+        missing = [t for t in c_tests if t not in latest_by_test]
+
+        pass_set = {"PASS", "SUPPORTED", "ACCEPTED"}
+        reject_set = {"FAIL", "REJECTED"}
+
+        if missing:
+            c_status = "UNDERDETERMINED"
+            c_rationale = f"Missing Tier C tests: {', '.join(missing)}."
+            c_next = f"Run missing Tier C tests: {', '.join(missing)}."
+        else:
+            verdicts = [str(latest_by_test[t].get("verdict", "")).upper() for t in c_tests]
+            if all(v in reject_set for v in verdicts):
+                c_status = "REJECTED"
+                c_rationale = "All Tier C Claim 3P tests failed; rejection is conclusive for current hypotheses."
+                c_next = "Propose alternative hypotheses/falsifiers before additional Tier C runs."
+            elif all(v in pass_set for v in verdicts):
+                c_status = "ACCEPTED"
+                c_rationale = "All Tier C Claim 3P tests passed; support is conclusive for current hypotheses."
+                c_next = ""
+            else:
+                c_status = "UNDERDETERMINED"
+                c_rationale = "Tier C Claim 3P evidence is mixed."
+                c_next = "Generate discriminative follow-up tests from failed/passed divergence."
+
+        row_c: dict[str, Any] = {
+            "claim_id": "CLAIM_3P_PHYSICAL_CONVERGENCE_TIER_C",
+            "status": c_status,
+            "rationale": c_rationale,
+            "witnesses": ["results/science/campaign/campaign_index.csv", "results/science/campaign/campaign_report.md"],
+        }
+        if c_next:
+            row_c["next_test"] = c_next
+        rows.append(row_c)
+
+        rows.append(
+            {
+                "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
+                "status": "ACCEPTED" if c_status in {"ACCEPTED", "REJECTED"} else "UNDERDETERMINED",
+                "rationale": "PDF physics claims are mapped to Tier C executable convergence evidence.",
+                "witnesses": [str(pdf_path), "results/selection/evidence_index.json"],
+            }
+        )
     else:
         claim3p_status = "UNDERDETERMINED"
         if science_status == "REJECTED":
@@ -1761,10 +1876,12 @@ def main() -> int:
             record_event(events_path, step, "step_started", {"name": manifest["steps"][step]["name"]})
 
             overall_status = "COMPLETE"
+            focus = (args.focus_objective or "ALL").strip().upper()
             if mode == "STOPPED":
                 overall_status = "STOPPED"
-            elif args.focus_objective == "A":
-                if selection_status in {"UNDERDETERMINED"}:
+            elif focus in {"A", "B", "C"}:
+                # Focused objective runs are conclusive once selection is ACCEPTED/REJECTED.
+                if selection_status in {"UNDERDETERMINED", "NOT_RUN", "FAIL"}:
                     overall_status = "PARTIAL"
             elif selection_status in {"UNDERDETERMINED"} or science_status in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN", "REJECTED"}:
                 overall_status = "PARTIAL"

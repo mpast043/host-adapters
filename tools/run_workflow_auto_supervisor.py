@@ -105,7 +105,7 @@ def read_plan_state(run_dir: Path) -> tuple[bool, list[str]]:
     return stop_triggered, tier_c_blocked
 
 
-def run_research_probe(repo_root: Path, run_dir: Path, underdetermined_cycles: int) -> dict:
+def run_research_probe(repo_root: Path, run_dir: Path, underdetermined_cycles: int, focus_objective: str) -> dict:
     output_json = run_dir / "results" / "research" / "research_signal.json"
     output_md = run_dir / "results" / "research" / "research_signal.md"
     cmd = [
@@ -115,6 +115,8 @@ def run_research_probe(repo_root: Path, run_dir: Path, underdetermined_cycles: i
         str(run_dir),
         "--underdetermined-cycles",
         str(underdetermined_cycles),
+        "--focus-objective",
+        focus_objective,
         "--output-json",
         str(output_json),
         "--output-md",
@@ -228,7 +230,7 @@ def main() -> int:
         if selection == "UNDERDETERMINED":
             underdetermined_streak += 1
             if args.research_on_underdetermined:
-                research = run_research_probe(repo_root, run_dir, underdetermined_streak)
+                research = run_research_probe(repo_root, run_dir, underdetermined_streak, args.focus_objective)
                 print(
                     "[workflow-auto-supervisor] research_probe "
                     f"ok={research.get('ok', False)} "

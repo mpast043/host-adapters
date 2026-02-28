@@ -23,6 +23,12 @@ Run agentic mode:
 make workflow-auto DATA_REPO=/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters
 ```
 
+Run math/physics autonomy mode (focus B, external research enabled, Tier C still gated):
+
+```bash
+make workflow-physics-auto DATA_REPO=/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters
+```
+
 Run legacy supervisor mode:
 
 ```bash

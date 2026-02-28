@@ -10,6 +10,7 @@ This tool is intentionally lightweight:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import re
@@ -45,6 +46,79 @@ def default_queries() -> list[str]:
         "tensor network MERA model selection AIC BIC",
         "cyclic boundary conditions 1D spin chain benchmark",
     ]
+
+
+def focus_queries(focus_objective: str) -> list[str]:
+    focus = (focus_objective or "ALL").strip().upper()
+    if focus == "A":
+        return [
+            "autonomous scientific workflow reproducibility artifact retention policy gating",
+            "agentic workflow fail-safe orchestration best practices",
+        ]
+    if focus == "B":
+        return [
+            "model selection robustness AIC BIC bootstrap confidence intervals",
+            "finite size scaling regression diagnostics entanglement entropy",
+            "MERA variational stability seed sensitivity analysis",
+        ]
+    if focus == "C":
+        return [
+            "ising cyclic boundary finite size convergence",
+            "heisenberg cyclic boundary finite size convergence",
+            "spin chain model comparison finite-size corrections",
+        ]
+    return []
+
+
+def load_local_signal_queries(run_dir: Path) -> tuple[list[str], dict[str, Any]]:
+    campaign_csv = run_dir / "results" / "science" / "campaign" / "campaign_index.csv"
+    status_json = run_dir / "results" / "workflow_auto_status.json"
+    suggested: list[str] = []
+    signals: dict[str, Any] = {
+        "failed_tests": [],
+        "underdetermined_claims": [],
+    }
+
+    if campaign_csv.exists():
+        with campaign_csv.open("r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                test_id = str(row.get("test_id", "")).strip()
+                verdict = str(row.get("verdict", "")).upper().strip()
+                if not test_id:
+                    continue
+                if verdict in {"FAIL", "REJECTED"}:
+                    signals["failed_tests"].append(test_id)
+                    if test_id == "claim2_seed_perturbation":
+                        suggested.append("MERA optimization seed sensitivity statistical robustness")
+                    elif test_id == "claim3_optionb_regime_check":
+                        suggested.append("entropy scaling model mismatch diagnosis finite-size corrections")
+                    elif test_id.startswith("claim3p_"):
+                        suggested.append("boundary condition dependence in spin chain finite-size scaling")
+
+    if status_json.exists():
+        try:
+            status = json.loads(status_json.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            status = {}
+        selection = str(status.get("selection_status", "")).upper().strip()
+        science = str(status.get("science_status", "")).upper().strip()
+        if selection == "UNDERDETERMINED":
+            signals["underdetermined_claims"].append("selection")
+            suggested.append("experiment design for discriminative model selection tests")
+        if science in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN"}:
+            signals["underdetermined_claims"].append("science")
+            suggested.append("replication protocol for computational physics claims")
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for query in suggested:
+        norm = query.strip().lower()
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        deduped.append(query)
+    return deduped, signals
 
 
 def parse_arxiv(xml_text: str) -> list[dict[str, Any]]:
@@ -123,7 +197,7 @@ def fetch_crossref(query: str, rows: int) -> tuple[list[dict[str, Any]], str | N
         return [], f"crossref_error: {exc}"
 
 
-def rank_and_recommend(items: list[dict[str, Any]], underdetermined_cycles: int) -> dict[str, Any]:
+def rank_and_recommend(items: list[dict[str, Any]], underdetermined_cycles: int, focus_objective: str) -> dict[str, Any]:
     signal_patterns = [
         "cyclic",
         "boundary",
@@ -143,28 +217,50 @@ def rank_and_recommend(items: list[dict[str, Any]], underdetermined_cycles: int)
     top = ranked[:12]
 
     cumulative = sum(int(x.get("relevance_score", 0)) for x in top)
-    escalate_tier_c = underdetermined_cycles >= 2 and cumulative >= 6
-    if any("heisenberg" in f"{x.get('title', '')} {x.get('abstract', '')}".lower() for x in top):
-        escalate_tier_c = escalate_tier_c or underdetermined_cycles >= 1
+    focus = (focus_objective or "ALL").strip().upper()
+    escalate_tier_c = False
+    if focus in {"ALL", "C"}:
+        escalate_tier_c = underdetermined_cycles >= 2 and cumulative >= 6
+        if any("heisenberg" in f"{x.get('title', '')} {x.get('abstract', '')}".lower() for x in top):
+            escalate_tier_c = escalate_tier_c or underdetermined_cycles >= 1
 
-    recommended_execution_keys: list[str] = [
-        "claim3_optionb_regime_check",
-        "claim2_seed_perturbation",
-    ]
-    if escalate_tier_c:
-        recommended_execution_keys.extend(
-            [
-                "claim3p_ising_cyclic_l8",
-                "claim3p_heisenberg_cyclic_l8",
-                "claim3p_l16_gate",
-            ]
-        )
+    if focus == "A":
+        recommended_execution_keys = [
+            "platform_mcporter_health_snapshot",
+            "platform_openclaw_opt_check",
+            "platform_openclaw_opt_check_relaxed",
+        ]
+    elif focus == "B":
+        recommended_execution_keys = [
+            "claim2_seed_perturbation",
+            "claim3_optionb_regime_check",
+        ]
+    elif focus == "C":
+        recommended_execution_keys = [
+            "claim3p_ising_cyclic_l8",
+            "claim3p_heisenberg_cyclic_l8",
+            "claim3p_l16_gate",
+        ]
+    else:
+        recommended_execution_keys = [
+            "claim2_seed_perturbation",
+            "claim3_optionb_regime_check",
+        ]
+        if escalate_tier_c:
+            recommended_execution_keys.extend(
+                [
+                    "claim3p_ising_cyclic_l8",
+                    "claim3p_heisenberg_cyclic_l8",
+                    "claim3p_l16_gate",
+                ]
+            )
 
     return {
         "top_evidence": top,
         "escalate_tier_c": escalate_tier_c,
         "recommended_execution_keys": recommended_execution_keys,
         "signal_score": cumulative,
+        "focus_objective": focus,
     }
 
 
@@ -175,6 +271,7 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
         "# Research Signals: Framework with Selection",
         "",
         f"Generated: {payload.get('generated_at_utc', '')}",
+        f"Focus objective: `{payload.get('focus_objective', 'ALL')}`",
         f"Underdetermined cycles observed: `{payload.get('underdetermined_cycles', 0)}`",
         f"Signal score: `{rec.get('signal_score', 0)}`",
         f"Escalate Tier C: `{rec.get('escalate_tier_c', False)}`",
@@ -183,6 +280,15 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
     ]
     for key in rec.get("recommended_execution_keys", []):
         lines.append(f"- `{key}`")
+    local_signals = payload.get("local_signals", {})
+    lines.extend(
+        [
+            "",
+            "## Local Signals",
+            f"- Failed tests: `{len(local_signals.get('failed_tests', []))}`",
+            f"- Underdetermined markers: `{len(local_signals.get('underdetermined_claims', []))}`",
+        ]
+    )
     lines.extend(["", "## Top External Evidence", "| Source | Title | Published | URL | Score |", "|---|---|---|---|---:|"])
     if evidence:
         for row in evidence:
@@ -203,6 +309,7 @@ def main() -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--max-results-per-query", type=int, default=5)
     parser.add_argument("--underdetermined-cycles", type=int, default=1)
+    parser.add_argument("--focus-objective", type=str, default="ALL", choices=["ALL", "A", "B", "C"])
     parser.add_argument("--output-json", type=Path, default=None)
     parser.add_argument("--output-md", type=Path, default=None)
     args = parser.parse_args()
@@ -210,7 +317,12 @@ def main() -> int:
     run_dir = args.run_dir.resolve()
     output_json = args.output_json or (run_dir / "results" / "research" / "research_signal.json")
     output_md = args.output_md or (run_dir / "results" / "research" / "research_signal.md")
-    queries = default_queries()
+    local_queries, local_signals = load_local_signal_queries(run_dir)
+    queries: list[str] = []
+    for q in default_queries() + focus_queries(args.focus_objective) + local_queries:
+        q = q.strip()
+        if q and q not in queries:
+            queries.append(q)
 
     collected: list[dict[str, Any]] = []
     query_logs: list[dict[str, Any]] = []
@@ -233,13 +345,16 @@ def main() -> int:
             }
         )
 
-    recommendations = rank_and_recommend(collected, args.underdetermined_cycles)
+    recommendations = rank_and_recommend(collected, args.underdetermined_cycles, args.focus_objective)
     payload = {
         "generated_at_utc": utc_now(),
         "run_dir": str(run_dir),
         "underdetermined_cycles": args.underdetermined_cycles,
+        "focus_objective": (args.focus_objective or "ALL").strip().upper(),
         "queries": query_logs,
+        "query_count": len(queries),
         "total_documents": len(collected),
+        "local_signals": local_signals,
         "errors": errors,
         "recommendations": recommendations,
     }

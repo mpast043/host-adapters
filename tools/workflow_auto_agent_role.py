@@ -137,7 +137,14 @@ def role_planner(
     }
 
 
-def role_researcher(*, repo_root: Path, run_dir: Path, cycle: int, underdetermined_cycles: int) -> dict[str, Any]:
+def role_researcher(
+    *,
+    repo_root: Path,
+    run_dir: Path,
+    cycle: int,
+    underdetermined_cycles: int,
+    focus_objective: str,
+) -> dict[str, Any]:
     out_json = run_dir / "results" / "agentic" / f"research_signal_cycle_{cycle:03d}.json"
     out_md = run_dir / "results" / "agentic" / f"research_signal_cycle_{cycle:03d}.md"
     cmd = [
@@ -147,6 +154,8 @@ def role_researcher(*, repo_root: Path, run_dir: Path, cycle: int, underdetermin
         str(run_dir),
         "--underdetermined-cycles",
         str(underdetermined_cycles),
+        "--focus-objective",
+        focus_objective,
         "--output-json",
         str(out_json),
         "--output-md",
@@ -301,6 +310,7 @@ def main() -> int:
                 run_dir=run_dir,
                 cycle=args.cycle,
                 underdetermined_cycles=args.underdetermined_cycles,
+                focus_objective=args.focus_objective,
             )
 
     write_json(args.output_json.resolve(), result)
