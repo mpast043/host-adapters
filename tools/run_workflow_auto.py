@@ -799,6 +799,9 @@ def main() -> int:
         retention_status = str(status_obj.get("retention_status", retention_status))
         if str(status_obj.get("mode", "")).upper() == "LOCAL_ONLY":
             mode = "LOCAL_ONLY"
+    if args.focus_objective == "A":
+        # Tier A readiness runs are independent of physics-claim status.
+        science_status = "NOT_RUN"
     if verdict_obj is not None:
         lint_status = str(verdict_obj.get("lint_status", lint_status))
     if resume_enabled:
