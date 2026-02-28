@@ -13,6 +13,10 @@ WORKFLOW_RESEARCH_AUTO_ESCALATE_TIER_C ?= 0
 WORKFLOW_FOCUS_OBJECTIVE ?= A
 WORKFLOW_PHYSICS_SLEEP_SECONDS ?= 5
 WORKFLOW_START_FRESH ?= 1
+WORKFLOW_REQUIRE_CLAIM_MAP ?= 1
+WORKFLOW_CLAIM_MAP ?= docs/physics/framework_pdf_claim_map_v1.json
+WORKFLOW_CLAIM_MAP_TARGET_UNRESOLVED ?= 0
+WORKFLOW_CLAIM_MAP_STALL_CYCLES ?= 2
 
 all: install test
 
@@ -50,7 +54,7 @@ workflow-auto-supervisor:
 	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles $(WORKFLOW_MAX_CYCLES) --sleep-seconds $(WORKFLOW_SLEEP_SECONDS) --focus-objective $(WORKFLOW_FOCUS_OBJECTIVE) $(if $(filter 1,$(WORKFLOW_UNTIL_RESOLVED)),--until-resolved,) $(if $(WORKFLOW_TIER_C_AFTER_CYCLE),--tier-c-after-cycle $(WORKFLOW_TIER_C_AFTER_CYCLE),) $(if $(WORKFLOW_TIER_C_JUSTIFICATION),--tier-c-justification "$(WORKFLOW_TIER_C_JUSTIFICATION)",) $(if $(filter 1,$(WORKFLOW_RESEARCH_ON_UNDERDETERMINED)),--research-on-underdetermined,) $(if $(filter 1,$(WORKFLOW_RESEARCH_AUTO_ESCALATE_TIER_C)),--research-auto-escalate-tier-c,)
 
 workflow-physics-auto:
-	$(PYTHON) tools/workflow_auto_multi_agent.py --repo-root . --artifacts-root "$(DATA_REPO)" --focus-objective B --until-resolved --sleep-seconds $(WORKFLOW_PHYSICS_SLEEP_SECONDS) --research-on-underdetermined $(if $(filter 1,$(WORKFLOW_START_FRESH)),--start-fresh,)
+	$(PYTHON) tools/workflow_auto_multi_agent.py --repo-root . --artifacts-root "$(DATA_REPO)" --focus-objective B --until-resolved --sleep-seconds $(WORKFLOW_PHYSICS_SLEEP_SECONDS) --research-on-underdetermined --claim-map "$(WORKFLOW_CLAIM_MAP)" --claim-map-target-unresolved $(WORKFLOW_CLAIM_MAP_TARGET_UNRESOLVED) --claim-map-stall-cycles $(WORKFLOW_CLAIM_MAP_STALL_CYCLES) $(if $(filter 1,$(WORKFLOW_REQUIRE_CLAIM_MAP)),--require-claim-map-gate,) $(if $(filter 1,$(WORKFLOW_START_FRESH)),--start-fresh,)
 
 workflow-auto-once:
 	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)" --resume-latest --focus-objective $(WORKFLOW_FOCUS_OBJECTIVE)

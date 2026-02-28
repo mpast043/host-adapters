@@ -1341,11 +1341,7 @@ def main() -> int:
 
             run_plan = {
                 "generated_at_utc": utc_now(),
-                "baseline_tests": [
-                    {"test_id": "claim2_tradeoff_baseline", "runner": str(runners["claim2"]), "seed": 123},
-                    {"test_id": "claim3_optionb_baseline", "runner": str(runners["claim3"]), "seed": args.seed},
-                    {"test_id": "claim3p_ising_open_baseline", "runner": str(runners["claim3p"]), "seed": args.seed},
-                ],
+                "baseline_tests": [],
                 "exploration_tests": [],
                 "budgets": {
                     "max_minutes": args.max_minutes,
@@ -1359,67 +1355,89 @@ def main() -> int:
                     "science_evidence_failure_is_nonblocking": True,
                 },
             }
-            write_json(results_dir / "science" / "run_plan.json", run_plan)
-
             baseline_outputs = {
                 "claim2_baseline": results_dir / "science" / "claim2_baseline",
                 "claim3_baseline": results_dir / "science" / "claim3_baseline",
                 "claim3p_ising_open": results_dir / "science" / "claim3p_ising_open",
             }
 
-            baseline_commands = [
-                (
-                    "science_claim2_baseline",
-                    [python_exe, str(runners["claim2"]), "--output", str(baseline_outputs["claim2_baseline"]), "--seed", "123"],
-                    "claim2_baseline",
-                ),
-                (
-                    "science_claim3_optionb_baseline",
-                    [
-                        python_exe,
-                        str(runners["claim3"]),
-                        "--output_root",
-                        str(results_dir / "science"),
-                        "--experiment_name",
+            focus = (args.focus_objective or "ALL").strip().upper()
+            baseline_commands: list[tuple[str, list[str], str]] = []
+
+            if focus in {"ALL", "B"}:
+                baseline_commands.append(
+                    (
+                        "science_claim2_baseline",
+                        [python_exe, str(runners["claim2"]), "--output", str(baseline_outputs["claim2_baseline"]), "--seed", "123"],
+                        "claim2_baseline",
+                    )
+                )
+                run_plan["baseline_tests"].append(
+                    {"test_id": "claim2_tradeoff_baseline", "runner": str(runners["claim2"]), "seed": 123}
+                )
+
+            if focus in {"ALL", "B"}:
+                baseline_commands.append(
+                    (
+                        "science_claim3_optionb_baseline",
+                        [
+                            python_exe,
+                            str(runners["claim3"]),
+                            "--output_root",
+                            str(results_dir / "science"),
+                            "--experiment_name",
+                            "claim3_baseline",
+                            "--chi_sweep",
+                            "2,4,8",
+                            "--seeds_per_chi",
+                            "3",
+                            "--num_sites",
+                            "32",
+                            "--subsystem_sizes",
+                            "16,8,4",
+                            "--seed_base",
+                            str(args.seed),
+                        ],
                         "claim3_baseline",
-                        "--chi_sweep",
-                        "2,4,8",
-                        "--seeds_per_chi",
-                        "3",
-                        "--num_sites",
-                        "32",
-                        "--subsystem_sizes",
-                        "16,8,4",
-                        "--seed_base",
-                        str(args.seed),
-                    ],
-                    "claim3_baseline",
-                ),
-                (
-                    "science_claim3p_ising_open",
-                    [
-                        python_exe,
-                        str(runners["claim3p"]),
-                        "--L",
-                        "8",
-                        "--A_size",
-                        "4",
-                        "--model",
-                        "ising_open",
-                        "--chi_sweep",
-                        "2,4",
-                        "--restarts_per_chi",
-                        "1",
-                        "--fit_steps",
-                        "30",
-                        "--seed",
-                        str(args.seed),
-                        "--output",
-                        str(baseline_outputs["claim3p_ising_open"]),
-                    ],
-                    "claim3p_ising_open",
-                ),
-            ]
+                    )
+                )
+                run_plan["baseline_tests"].append(
+                    {"test_id": "claim3_optionb_baseline", "runner": str(runners["claim3"]), "seed": args.seed}
+                )
+
+            if focus in {"ALL", "C"}:
+                baseline_commands.append(
+                    (
+                        "science_claim3p_ising_open",
+                        [
+                            python_exe,
+                            str(runners["claim3p"]),
+                            "--L",
+                            "8",
+                            "--A_size",
+                            "4",
+                            "--model",
+                            "ising_open",
+                            "--chi_sweep",
+                            "2,4",
+                            "--restarts_per_chi",
+                            "1",
+                            "--fit_steps",
+                            "30",
+                            "--seed",
+                            str(args.seed),
+                            "--output",
+                            str(baseline_outputs["claim3p_ising_open"]),
+                        ],
+                        "claim3p_ising_open",
+                    )
+                )
+                run_plan["baseline_tests"].append(
+                    {"test_id": "claim3p_ising_open_baseline", "runner": str(runners["claim3p"]), "seed": args.seed}
+                )
+
+            # Persist finalized baseline plan after objective scoping.
+            write_json(results_dir / "science" / "run_plan.json", run_plan)
 
             baseline_summary: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
 

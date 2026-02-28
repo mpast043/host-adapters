@@ -77,6 +77,7 @@ Stop-condition policy:
 1. For objective `B` (math/physics supported claims), keep looping until conclusive.
 2. Use external research every underdetermined cycle.
 3. Keep Tier C gated unless explicitly overridden.
+4. Enforce claim-map gate: do not accept final completion while claim map unresolved count is above target.
 
 ## 7. Retention and Audit
 

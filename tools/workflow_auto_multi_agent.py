@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import subprocess
 import time
@@ -51,6 +52,51 @@ def append_event(path: Path, event: dict[str, Any]) -> None:
         f.write(json.dumps(event) + "\n")
 
 
+def load_claim_map(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def claim_gate_status(path: Path) -> dict[str, Any]:
+    data = load_claim_map(path)
+    claims = data.get("claims", [])
+    unresolved_statuses = {"DOC_ONLY", "PARTIAL", "OPEN"}
+    unresolved = []
+    for claim in claims:
+        status = str(claim.get("status", "")).upper().strip()
+        if status in unresolved_statuses:
+            unresolved.append(str(claim.get("id", "unknown")))
+    unresolved_sorted = sorted(set(unresolved))
+    digest = hashlib.sha256(",".join(unresolved_sorted).encode("utf-8")).hexdigest() if unresolved_sorted else ""
+    return {
+        "enabled": path.exists(),
+        "path": str(path),
+        "total_claims": len(claims),
+        "unresolved_count": len(unresolved_sorted),
+        "unresolved_claim_ids": unresolved_sorted,
+        "unresolved_digest": digest,
+    }
+
+
+def runnable_claim_actions(unresolved_claim_ids: list[str]) -> list[str]:
+    # Current executable coverage in workflow catalog.
+    mapping = {
+        "W01": "claim2_seed_perturbation",
+        "W05": "claim3_optionb_regime_check",
+        "W08": "claim2_seed_perturbation",
+    }
+    out: list[str] = []
+    for cid in unresolved_claim_ids:
+        key = mapping.get(cid)
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
 def write_live_brief(
     *,
     path: Path,
@@ -65,6 +111,7 @@ def write_live_brief(
     planner_event: dict[str, Any],
     research_event: dict[str, Any] | None,
     executor_event: dict[str, Any] | None,
+    claim_gate: dict[str, Any] | None = None,
 ) -> None:
     planner_result = planner_event.get("result") or {}
     research_result = (research_event or {}).get("result") or {}
@@ -120,6 +167,19 @@ def write_live_brief(
             f"- `{run_dir}/logs/agentic_events.jsonl`",
         ]
     )
+    if claim_gate is not None:
+        lines.extend(
+            [
+                "",
+                "## Claim Map Gate",
+                f"- Enabled: `{claim_gate.get('enabled', False)}`",
+                f"- Unresolved count: `{claim_gate.get('unresolved_count', 0)}`",
+                f"- Claim map path: `{claim_gate.get('path', '')}`",
+            ]
+        )
+        unresolved = claim_gate.get("unresolved_claim_ids", []) or []
+        if unresolved:
+            lines.append("- Unresolved IDs: " + ", ".join(f"`{x}`" for x in unresolved[:20]))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -247,6 +307,29 @@ def main() -> int:
         action="store_true",
         help="Start a new RUN_* instead of resuming the latest run.",
     )
+    parser.add_argument(
+        "--claim-map",
+        type=Path,
+        default=Path("docs/physics/framework_pdf_claim_map_v1.json"),
+        help="Claim map used as completion gate for framework resolution.",
+    )
+    parser.add_argument(
+        "--require-claim-map-gate",
+        action="store_true",
+        help="Do not return COMPLETE unless unresolved claim count is at or below threshold.",
+    )
+    parser.add_argument(
+        "--claim-map-target-unresolved",
+        type=int,
+        default=0,
+        help="Required unresolved-claim threshold for completion when claim gate is enabled.",
+    )
+    parser.add_argument(
+        "--claim-map-stall-cycles",
+        type=int,
+        default=2,
+        help="Fail as unresolved/stalled if claim map unresolved set does not change for this many cycles.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -284,6 +367,8 @@ def main() -> int:
     live_brief_history = run_dir / "results" / "agentic" / "live_brief_history.jsonl"
 
     underdetermined_streak = 0
+    unresolved_streak = 0
+    last_unresolved_digest = ""
     dynamic_tier_c = False
     seed = args.seed
     cycle = 1
@@ -338,6 +423,7 @@ def main() -> int:
                 planner_event=planner_event,
                 research_event=None,
                 executor_event=None,
+                claim_gate=None,
             )
             print("[workflow-auto-agentic] planner failed")
             return 1
@@ -374,6 +460,7 @@ def main() -> int:
                     planner_event=planner_event,
                     research_event=research_event,
                     executor_event=None,
+                    claim_gate=None,
                 )
                 print("[workflow-auto-agentic] researcher failed")
                 return 1
@@ -422,6 +509,7 @@ def main() -> int:
                 planner_event=planner_event,
                 research_event=research_event,
                 executor_event=executor_event,
+                claim_gate=None,
             )
             print("[workflow-auto-agentic] executor failed")
             return 1
@@ -433,6 +521,8 @@ def main() -> int:
         mode = str(result.get("mode", "UNKNOWN")).upper()
         overall = str(result.get("overall_status", "UNKNOWN")).upper()
         selection = str(result.get("selection_status", "UNKNOWN")).upper()
+        claim_gate = claim_gate_status(args.claim_map.resolve())
+        unresolved_actions = runnable_claim_actions(claim_gate.get("unresolved_claim_ids", []))
 
         print(
             "[workflow-auto-agentic] "
@@ -452,11 +542,62 @@ def main() -> int:
             planner_event=planner_event,
             research_event=research_event,
             executor_event=executor_event,
+            claim_gate=claim_gate,
         )
 
         if mode == "STOPPED" or overall == "STOPPED":
             return 1
         if overall == "COMPLETE":
+            if args.require_claim_map_gate and claim_gate.get("enabled"):
+                unresolved_count = int(claim_gate.get("unresolved_count", 0))
+                unresolved_digest = str(claim_gate.get("unresolved_digest", ""))
+                target = int(args.claim_map_target_unresolved)
+                if unresolved_count <= target:
+                    return 0
+
+                if unresolved_digest and unresolved_digest == last_unresolved_digest:
+                    unresolved_streak += 1
+                else:
+                    unresolved_streak = 1
+                    last_unresolved_digest = unresolved_digest
+
+                append_event(
+                    events_path,
+                    {
+                        "ts_utc": utc_now(),
+                        "event": "claim_gate_unresolved",
+                        "cycle": cycle,
+                        "unresolved_count": unresolved_count,
+                        "target_unresolved": target,
+                        "unresolved_streak": unresolved_streak,
+                        "runnable_actions": unresolved_actions,
+                    },
+                )
+
+                if unresolved_streak >= max(1, int(args.claim_map_stall_cycles)):
+                    print(
+                        "[workflow-auto-agentic] claim gate stalled: unresolved claims not improving; "
+                        "marking unresolved instead of COMPLETE"
+                    )
+                    return 2
+
+                if args.until_resolved:
+                    seed += 1
+                    cycle += 1
+                    if args.sleep_seconds > 0:
+                        time.sleep(args.sleep_seconds)
+                    continue
+
+                if cycle < args.max_cycles:
+                    seed += 1
+                    cycle += 1
+                    if args.sleep_seconds > 0:
+                        time.sleep(args.sleep_seconds)
+                    continue
+
+                print("[workflow-auto-agentic] claim gate unresolved at max cycles")
+                return 2
+
             return 0
 
         if selection == "UNDERDETERMINED":

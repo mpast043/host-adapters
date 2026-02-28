@@ -32,6 +32,10 @@ make workflow-physics-auto DATA_REPO=/tmp/openclaws/Repos/host-adapters-experime
 Notes:
 - `workflow-physics-auto` starts fresh by default (`WORKFLOW_START_FRESH=1`) so it does not keep reusing an already-resolved run.
 - Set `WORKFLOW_START_FRESH=0` only if you intentionally want to resume the latest run.
+- Physics mode now uses a claim-map completion gate by default:
+  - `WORKFLOW_REQUIRE_CLAIM_MAP=1`
+  - `WORKFLOW_CLAIM_MAP=docs/physics/framework_pdf_claim_map_v1.json`
+  - If unresolved claims remain unchanged for `WORKFLOW_CLAIM_MAP_STALL_CYCLES`, it exits unresolved (`exit 2`) instead of reporting false completion.
 
 Run legacy supervisor mode:
 
