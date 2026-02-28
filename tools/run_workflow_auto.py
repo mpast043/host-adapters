@@ -734,16 +734,30 @@ def main() -> int:
         if not args.skip_tests:
             test_env = os.environ.copy()
             test_env["ALLOW_CGF_DOWN"] = "1"
-            tests = run_command(
-                run_dir=run_dir,
-                manifest=manifest,
-                events_path=events_path,
-                step=step,
-                name="make_test",
-                command=["make", "test"],
-                cwd=repo_root,
-                env=test_env,
-            )
+            makefile_text = read_text(repo_root / "Makefile")
+            use_test_fast = bool(re.search(r"(?m)^\s*test-fast\s*:", makefile_text))
+            if use_test_fast:
+                tests = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="make_test_fast",
+                    command=["make", "test-fast"],
+                    cwd=repo_root,
+                    env=test_env,
+                )
+            else:
+                tests = run_command(
+                    run_dir=run_dir,
+                    manifest=manifest,
+                    events_path=events_path,
+                    step=step,
+                    name="pytest_tests",
+                    command=[python_exe, "-m", "pytest", "-q", "tests/"],
+                    cwd=repo_root,
+                    env=test_env,
+                )
             if tests["exit_code"] != 0:
                 stop_reason = "Step 1 tests failed"
                 stop_classification = "TEST_FAILURE"
