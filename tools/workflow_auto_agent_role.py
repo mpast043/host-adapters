@@ -79,6 +79,7 @@ def role_planner(
     cycle: int,
     allow_tier_c: bool,
     tier_c_justification: str,
+    focus_objective: str,
 ) -> dict[str, Any]:
     status = load_json(run_dir / "results" / "workflow_auto_status.json")
     compute_target = str((status.get("mcp_targets") or {}).get("compute_target") or "")
@@ -102,6 +103,8 @@ def role_planner(
         str(out_json),
         "--output-md",
         str(out_md),
+        "--focus-objective",
+        focus_objective,
     ]
     if compute_target.strip():
         cmd.extend(["--compute-target", compute_target.strip()])
@@ -180,6 +183,7 @@ def role_executor(
     seed: int,
     allow_tier_c: bool,
     tier_c_justification: str,
+    focus_objective: str,
 ) -> dict[str, Any]:
     cmd = [
         "python3",
@@ -191,6 +195,8 @@ def role_executor(
         "--resume-latest",
         "--seed",
         str(seed),
+        "--focus-objective",
+        focus_objective,
     ]
     if allow_tier_c:
         cmd.extend(["--tier-c-justification", tier_c_justification.strip()])
@@ -238,6 +244,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-minutes", type=int, default=120)
     parser.add_argument("--max-runs", type=int, default=80)
+    parser.add_argument(
+        "--focus-objective",
+        type=str,
+        default="ALL",
+        choices=["ALL", "A", "B", "C"],
+    )
     parser.add_argument("--allow-tier-c", action="store_true")
     parser.add_argument(
         "--tier-c-justification",
@@ -261,6 +273,7 @@ def main() -> int:
             seed=args.seed,
             allow_tier_c=args.allow_tier_c,
             tier_c_justification=args.tier_c_justification,
+            focus_objective=args.focus_objective,
         )
     else:
         if run_dir is None:
@@ -280,6 +293,7 @@ def main() -> int:
                 cycle=args.cycle,
                 allow_tier_c=args.allow_tier_c,
                 tier_c_justification=args.tier_c_justification,
+                focus_objective=args.focus_objective,
             )
         else:
             result = role_researcher(
@@ -296,4 +310,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

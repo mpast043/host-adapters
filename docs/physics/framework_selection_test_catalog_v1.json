@@ -53,6 +53,23 @@
       "execution_key": "platform_mcporter_health_snapshot"
     },
     {
+      "test_id": "platform_openclaw_opt_check_relaxed",
+      "title": "OpenClaw optimization fallback thresholds check",
+      "tier": "A",
+      "critical_path_objective": "A",
+      "target_claims": [
+        "platform_readiness"
+      ],
+      "decision_if_pass": "Classify platform as conditionally usable and prioritize remediation of strict-threshold gaps.",
+      "decision_if_fail": "Classify platform readiness as rejected and halt autonomous expansion.",
+      "estimated_minutes": 3,
+      "requires_compute": false,
+      "hardening_task": true,
+      "protects_supported_claim": true,
+      "prevents_regression": true,
+      "execution_key": "platform_openclaw_opt_check_relaxed"
+    },
+    {
       "test_id": "claim3_optionb_regime_check",
       "title": "Claim 3 Option-B regression stability check",
       "tier": "B",

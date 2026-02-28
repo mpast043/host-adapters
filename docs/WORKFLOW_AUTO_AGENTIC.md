@@ -10,9 +10,10 @@ Each role runs in a separate subprocess via `tools/workflow_auto_agent_role.py` 
 
 ## Default behavior
 
-- Research is enabled on underdetermined cycles.
-- Research may auto-escalate Tier C when evidence indicates repeated underdetermination.
-- Tier C remains blocked unless escalation/override is active.
+- Focus objective is `A` (platform readiness) by default.
+- Tier C auto-escalation is disabled by default.
+- Tier C remains blocked unless explicitly enabled via override flags.
+- Under this default, autonomy iterates on Tier A evidence and alternatives until a conclusive readiness status is reached.
 
 ## Commands
 
@@ -36,4 +37,3 @@ make workflow-auto-supervisor DATA_REPO=/tmp/openclaws/Repos/host-adapters-exper
   - `RUN_*/results/agentic/executor_result_cycle_*.json`
 - Agentic event ledger:
   - `RUN_*/logs/agentic_events.jsonl`
-

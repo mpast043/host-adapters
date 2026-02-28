@@ -423,6 +423,8 @@ def build_selection_outputs(
     contract_status: str,
     science_status: str,
     science_artifacts: dict[str, str],
+    campaign_rows: list[dict[str, Any]],
+    focus_objective: str,
 ) -> tuple[str, list[dict[str, Any]]]:
     selection_dir = run_dir / "results" / "selection"
     selection_dir.mkdir(parents=True, exist_ok=True)
@@ -440,55 +442,133 @@ def build_selection_outputs(
     }
     rows.append(contract_row)
 
-    claim3p_status = "UNDERDETERMINED"
-    if science_status == "REJECTED":
-        claim3p_status = "REJECTED"
-    elif science_status == "SUPPORTED":
-        claim3p_status = "ACCEPTED"
+    focus = (focus_objective or "ALL").strip().upper()
+    if focus == "A":
+        latest_by_test: dict[str, dict[str, Any]] = {}
+        for row in campaign_rows:
+            test_id = str(row.get("test_id", "")).strip()
+            if test_id:
+                latest_by_test[test_id] = row
 
-    claim3p_row = {
-        "claim_id": "CLAIM_3P_PHYSICAL_CONVERGENCE",
-        "status": claim3p_status,
-        "rationale": "Mapped from Claim 3P baseline/exploration verdict artifacts.",
-        "witnesses": [
-            science_artifacts.get("claim3p_baseline", "results/science/baseline_summary.json"),
-            science_artifacts.get("campaign_report", "results/science/campaign/campaign_report.md"),
-        ],
-    }
-    if claim3p_row["status"] == "UNDERDETERMINED":
-        claim3p_row["next_test"] = "Run L=16 heisenberg_cyclic and ising_cyclic with >=3 seeds and compare ΔAIC/ΔBIC stability."
-    rows.append(claim3p_row)
+        required_tests = ["platform_mcporter_health_snapshot", "platform_openclaw_opt_check"]
+        missing_required = [t for t in required_tests if t not in latest_by_test]
 
-    rows.append(
-        {
-            "claim_id": "CLAIM_3_OPTION_B",
-            "status": "UNDERDETERMINED",
-            "rationale": "Option B evidence exists but physical interpretation remains limited to local numerical support.",
-            "witnesses": [
-                science_artifacts.get("claim3_baseline", "results/science/baseline_summary.json"),
-                "results/science/campaign/model_comparison.json",
-            ],
-            "next_test": "Add independent fit-family ablation and bootstrap confidence intervals for model ranking.",
+        def _is_fail(verdict: str) -> bool:
+            return verdict.upper() in {"FAIL", "REJECTED"}
+
+        def _is_pass(verdict: str) -> bool:
+            return verdict.upper() in {"PASS", "SUPPORTED", "ACCEPTED"}
+
+        failed_tests = [t for t in required_tests if t in latest_by_test and _is_fail(str(latest_by_test[t].get("verdict", "")))]
+        alt_map = {"platform_openclaw_opt_check": "platform_openclaw_opt_check_relaxed"}
+        pending_alternatives = [alt_map[t] for t in failed_tests if alt_map.get(t) and alt_map[t] not in latest_by_test]
+
+        platform_status = "UNDERDETERMINED"
+        rationale = ""
+        next_test = ""
+        if missing_required:
+            rationale = f"Missing required Tier A checks: {', '.join(missing_required)}."
+            next_test = f"Run missing Tier A checks: {', '.join(missing_required)}."
+        elif pending_alternatives:
+            rationale = (
+                "Tier A strict checks failed and alternative diagnostics were not executed yet."
+            )
+            next_test = f"Run Tier A alternatives: {', '.join(pending_alternatives)}."
+        elif failed_tests:
+            platform_status = "REJECTED"
+            rationale = (
+                "Tier A readiness checks are conclusive and failing; platform is not ready for autonomous science expansion."
+            )
+            next_test = "Apply remediation from finding codes and re-run Tier A checks."
+        elif all(_is_pass(str(latest_by_test[t].get("verdict", ""))) for t in required_tests):
+            platform_status = "ACCEPTED"
+            rationale = "Tier A readiness checks passed and are conclusive for platform-governance gating."
+            next_test = ""
+        else:
+            rationale = "Tier A checks produced non-conclusive verdicts."
+            next_test = "Re-run Tier A checks with diagnostics enabled."
+
+        platform_witnesses = []
+        for t in required_tests:
+            row = latest_by_test.get(t)
+            if row and row.get("artifact_path"):
+                platform_witnesses.append(str(row["artifact_path"]))
+        for t in ("platform_openclaw_opt_check_relaxed",):
+            row = latest_by_test.get(t)
+            if row and row.get("artifact_path"):
+                platform_witnesses.append(str(row["artifact_path"]))
+        if not platform_witnesses:
+            platform_witnesses = ["results/science/campaign/campaign_index.csv"]
+
+        platform_row: dict[str, Any] = {
+            "claim_id": "PLATFORM_READINESS_TIER_A",
+            "status": platform_status,
+            "rationale": rationale,
+            "witnesses": platform_witnesses,
         }
-    )
+        if next_test:
+            platform_row["next_test"] = next_test
+        rows.append(platform_row)
 
-    # Keep at least one explicit claim tied directly to the proposal PDF.
-    rows.append(
-        {
-            "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
-            "status": "UNDERDETERMINED",
-            "rationale": "PDF is present and indexed, but strong external physical claims require independent external benchmarks.",
+        rows.append(
+            {
+                "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
+                "status": "ACCEPTED" if platform_status in {"ACCEPTED", "REJECTED"} else "UNDERDETERMINED",
+                "rationale": "PDF source is retained and linked to local executable witnesses for Tier A readiness.",
+                "witnesses": [str(pdf_path), "results/selection/evidence_index.json"],
+            }
+        )
+    else:
+        claim3p_status = "UNDERDETERMINED"
+        if science_status == "REJECTED":
+            claim3p_status = "REJECTED"
+        elif science_status == "SUPPORTED":
+            claim3p_status = "ACCEPTED"
+
+        claim3p_row = {
+            "claim_id": "CLAIM_3P_PHYSICAL_CONVERGENCE",
+            "status": claim3p_status,
+            "rationale": "Mapped from Claim 3P baseline/exploration verdict artifacts.",
             "witnesses": [
-                str(pdf_path),
-                "results/selection/evidence_index.json",
+                science_artifacts.get("claim3p_baseline", "results/science/baseline_summary.json"),
+                science_artifacts.get("campaign_report", "results/science/campaign/campaign_report.md"),
             ],
-            "next_test": "Map each physical claim sentence to one executable test and one artifact-backed falsifier.",
         }
-    )
+        if claim3p_row["status"] == "UNDERDETERMINED":
+            claim3p_row["next_test"] = "Run L=16 heisenberg_cyclic and ising_cyclic with >=3 seeds and compare ΔAIC/ΔBIC stability."
+        rows.append(claim3p_row)
+
+        rows.append(
+            {
+                "claim_id": "CLAIM_3_OPTION_B",
+                "status": "UNDERDETERMINED",
+                "rationale": "Option B evidence exists but physical interpretation remains limited to local numerical support.",
+                "witnesses": [
+                    science_artifacts.get("claim3_baseline", "results/science/baseline_summary.json"),
+                    "results/science/campaign/model_comparison.json",
+                ],
+                "next_test": "Add independent fit-family ablation and bootstrap confidence intervals for model ranking.",
+            }
+        )
+
+        # Keep at least one explicit claim tied directly to the proposal PDF.
+        rows.append(
+            {
+                "claim_id": "PDF_FRAMEWORK_TRACEABILITY",
+                "status": "UNDERDETERMINED",
+                "rationale": "PDF is present and indexed, but strong external physical claims require independent external benchmarks.",
+                "witnesses": [
+                    str(pdf_path),
+                    "results/selection/evidence_index.json",
+                ],
+                "next_test": "Map each physical claim sentence to one executable test and one artifact-backed falsifier.",
+            }
+        )
 
     selection_manifest = {
         "generated_at_utc": utc_now(),
         "pdf_source": str(pdf_path),
+        "focus_objective": focus,
         "entry_count": len(rows),
         "statuses": ["ACCEPTED", "UNDERDETERMINED", "REJECTED"],
         "required_fields": ["claim_id", "status", "rationale", "witnesses"],
@@ -521,8 +601,10 @@ def build_selection_outputs(
     # REJECTED claims are valid outputs and must not fail Step 5 by themselves.
     if any(r["status"] == "UNDERDETERMINED" for r in rows):
         status = "UNDERDETERMINED"
+    elif any(r["status"] == "REJECTED" for r in rows):
+        status = "REJECTED"
     else:
-        status = "PASS"
+        status = "ACCEPTED"
 
     return status, rows
 
@@ -595,6 +677,13 @@ def main() -> int:
     parser.add_argument("--skip-lint", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-science", action="store_true")
+    parser.add_argument(
+        "--focus-objective",
+        type=str,
+        default="ALL",
+        choices=["ALL", "A", "B", "C"],
+        help="Critical-path objective focus for planning/selection. Use A to prioritize platform readiness.",
+    )
     parser.add_argument(
         "--tier-c-justification",
         type=str,
@@ -1156,8 +1245,9 @@ def main() -> int:
 
             baseline_summary: dict[str, Any] = {"generated_at_utc": utc_now(), "tests": []}
 
-            if args.skip_science:
-                baseline_summary["tests"].append({"test_id": "ALL_BASELINE", "status": "NOT_RUN", "reason": "--skip-science set"})
+            if args.skip_science or args.focus_objective == "A":
+                reason = "--skip-science set" if args.skip_science else "--focus-objective A suppresses science baseline"
+                baseline_summary["tests"].append({"test_id": "ALL_BASELINE", "status": "NOT_RUN", "reason": reason})
                 science_status = "NOT_RUN"
             else:
                 for name, cmd, key in baseline_commands:
@@ -1225,6 +1315,8 @@ def main() -> int:
             str(proposal_json),
             "--output-md",
             str(proposal_md),
+            "--focus-objective",
+            args.focus_objective,
         ]
         compute_target = str(manifest.get("mcp_targets", {}).get("compute_target") or "").strip()
         if compute_target:
@@ -1386,6 +1478,27 @@ def main() -> int:
                     L = 0
                     chi_label = "n/a"
                     seed_used = "n/a"
+                elif test_id == "platform_openclaw_opt_check_relaxed":
+                    output_root = results_dir / "science" / "platform_openclaw_opt_check_relaxed"
+                    output_root.mkdir(parents=True, exist_ok=True)
+                    cmd = [
+                        python_exe,
+                        "tools/openclaw_opt_check.py",
+                        "--output",
+                        str(output_root / "openclaw_opt_check.json"),
+                        "--min-files",
+                        "5",
+                        "--min-chunks",
+                        "20",
+                        "--min-eligible-skills",
+                        "8",
+                        "--max-disabled-skills",
+                        "6",
+                    ]
+                    model_name = "platform"
+                    L = 0
+                    chi_label = "n/a"
+                    seed_used = "n/a"
                 elif test_id == "platform_mcporter_health_snapshot":
                     output_root = results_dir / "science" / "platform_mcporter_health_snapshot"
                     output_root.mkdir(parents=True, exist_ok=True)
@@ -1426,6 +1539,21 @@ def main() -> int:
                     delta_aic = p34.get("delta_aic")
                     delta_bic = p34.get("delta_bic")
                     key_metrics = verdict_obj.get("metrics", {}) if isinstance(verdict_obj.get("metrics"), dict) else {}
+                elif test_id.startswith("platform_openclaw_opt_check"):
+                    opt_path = output_root / "openclaw_opt_check.json"
+                    if opt_path.exists():
+                        opt = safe_load_json(opt_path) or {}
+                        ready = bool(opt.get("ready", False))
+                        verdict = "PASS" if ready else "FAIL"
+                        key_metrics = {
+                            "ready": ready,
+                            "score": opt.get("score"),
+                            "errors": opt.get("errors"),
+                            "warnings": opt.get("warnings"),
+                            "finding_codes": [f.get("code") for f in opt.get("findings", []) if isinstance(f, dict)],
+                        }
+                    else:
+                        verdict = "PASS" if c_entry["exit_code"] == 0 else "FAIL"
                 elif c_entry["exit_code"] == 0:
                     verdict = "PASS"
                 else:
@@ -1588,6 +1716,8 @@ def main() -> int:
                 contract_status=contract_status,
                 science_status=science_status,
                 science_artifacts=science_artifacts,
+                campaign_rows=campaign_rows,
+                focus_objective=args.focus_objective,
             )
 
             manifest["steps"][step]["status"] = "PASS" if selection_status != "FAIL" else "FAIL"
@@ -1630,6 +1760,9 @@ def main() -> int:
             overall_status = "COMPLETE"
             if mode == "STOPPED":
                 overall_status = "STOPPED"
+            elif args.focus_objective == "A":
+                if selection_status in {"UNDERDETERMINED"}:
+                    overall_status = "PARTIAL"
             elif selection_status in {"UNDERDETERMINED"} or science_status in {"PARTIAL", "INCONCLUSIVE", "NOT_RUN", "REJECTED"}:
                 overall_status = "PARTIAL"
 
@@ -1648,6 +1781,7 @@ def main() -> int:
                 "artifact_index": "results/index.json",
                 "notes": [
                     f"lint_status={lint_status}",
+                    f"focus_objective={args.focus_objective}",
                     f"overall_status={overall_status}",
                 ],
             }

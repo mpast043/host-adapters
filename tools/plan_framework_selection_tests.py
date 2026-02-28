@@ -113,6 +113,7 @@ def plan_tests(
     compute_available: bool,
     allow_tier_c: bool,
     tier_c_justification: str,
+    focus_objective: str,
 ) -> dict[str, Any]:
     proposed = [dict(t) for t in tests]
     for t in proposed:
@@ -122,6 +123,10 @@ def plan_tests(
     allowed: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
     for t in proposed:
+        if focus_objective in {"A", "B", "C"} and t["critical_path_objective"] != focus_objective:
+            t["gate"] = {"allowed": False, "reasons": [f"FOCUS_OBJECTIVE_FILTER: {focus_objective}"]}
+            blocked.append(t)
+            continue
         ok, reasons = gate_test(
             t,
             compute_available=compute_available,
@@ -257,6 +262,13 @@ def main() -> int:
     parser.add_argument("--local-only", action="store_true")
     parser.add_argument("--tier-c-justification", type=str, default="")
     parser.add_argument(
+        "--focus-objective",
+        type=str,
+        default="ALL",
+        choices=["ALL", "A", "B", "C"],
+        help="Restrict planning to one critical path objective (A/B/C) or ALL.",
+    )
+    parser.add_argument(
         "--output-json",
         type=Path,
         default=Path("docs/state/framework_selection_plan_latest.json"),
@@ -284,6 +296,7 @@ def main() -> int:
         compute_available=compute_available,
         allow_tier_c=allow_tier_c,
         tier_c_justification=args.tier_c_justification,
+        focus_objective=args.focus_objective,
     )
 
     plan = {
@@ -291,6 +304,7 @@ def main() -> int:
         "catalog_path": str(catalog_path),
         "mode": "LOCAL_ONLY" if args.local_only else "FULL",
         "compute_target": args.compute_target.strip() or None,
+        "focus_objective": args.focus_objective,
         "tier_c_override": {
             "enabled": allow_tier_c,
             "justification": args.tier_c_justification.strip() or None,

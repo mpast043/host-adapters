@@ -47,6 +47,7 @@ def run_once(
     *,
     enable_tier_c: bool,
     tier_c_justification: str,
+    focus_objective: str,
 ) -> tuple[int, Path | None]:
     cmd = [
         "python3",
@@ -58,6 +59,8 @@ def run_once(
         "--resume-latest",
         "--seed",
         str(seed),
+        "--focus-objective",
+        focus_objective,
     ]
     if enable_tier_c and tier_c_justification.strip():
         cmd.extend(["--tier-c-justification", tier_c_justification.strip()])
@@ -174,6 +177,13 @@ def main() -> int:
         action="store_true",
         help="If research recommends escalation, enable Tier C override next cycle.",
     )
+    parser.add_argument(
+        "--focus-objective",
+        type=str,
+        default="ALL",
+        choices=["ALL", "A", "B", "C"],
+        help="Critical-path objective focus for orchestration.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -196,6 +206,7 @@ def main() -> int:
             seed,
             enable_tier_c=tier_c_enabled,
             tier_c_justification=args.tier_c_justification,
+            focus_objective=args.focus_objective,
         )
         if run_dir is None:
             print("[workflow-auto-supervisor] ERROR: no RUN_* directory found after execution")

@@ -65,6 +65,7 @@ def run_role(
     tier_c_justification: str,
     underdetermined_cycles: int,
     agentic_dir: Path,
+    focus_objective: str,
 ) -> dict[str, Any]:
     output_json = agentic_dir / f"{role}_result_cycle_{cycle:03d}.json"
     cmd = [
@@ -84,6 +85,8 @@ def run_role(
         str(max_minutes),
         "--max-runs",
         str(max_runs),
+        "--focus-objective",
+        focus_objective,
         "--tier-c-justification",
         tier_c_justification.strip(),
         "--underdetermined-cycles",
@@ -136,6 +139,13 @@ def main() -> int:
     )
     parser.add_argument("--research-on-underdetermined", action="store_true")
     parser.add_argument("--research-auto-escalate-tier-c", action="store_true")
+    parser.add_argument(
+        "--focus-objective",
+        type=str,
+        default="ALL",
+        choices=["ALL", "A", "B", "C"],
+        help="Critical-path objective focus for planning/execution.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -158,6 +168,7 @@ def main() -> int:
             tier_c_justification=args.tier_c_justification,
             underdetermined_cycles=0,
             agentic_dir=bootstrap_dir,
+            focus_objective=args.focus_objective,
         )
         run_dir_value = ((bootstrap.get("result") or {}).get("run_dir") or "").strip()
         run_dir = Path(run_dir_value) if run_dir_value else latest_run_dir(artifacts_root)
@@ -205,6 +216,7 @@ def main() -> int:
             tier_c_justification=args.tier_c_justification,
             underdetermined_cycles=underdetermined_streak,
             agentic_dir=agentic_dir,
+            focus_objective=args.focus_objective,
         )
         append_event(events_path, {"ts_utc": utc_now(), "event": "planner_finished", **planner_event})
 
@@ -227,6 +239,7 @@ def main() -> int:
                 tier_c_justification=args.tier_c_justification,
                 underdetermined_cycles=max(1, underdetermined_streak),
                 agentic_dir=agentic_dir,
+                focus_objective=args.focus_objective,
             )
             append_event(events_path, {"ts_utc": utc_now(), "event": "researcher_finished", **research_event})
             if research_event["worker_exit_code"] != 0:
@@ -258,6 +271,7 @@ def main() -> int:
             tier_c_justification=args.tier_c_justification,
             underdetermined_cycles=underdetermined_streak,
             agentic_dir=agentic_dir,
+            focus_objective=args.focus_objective,
         )
         append_event(events_path, {"ts_utc": utc_now(), "event": "executor_finished", **executor_event})
 
@@ -296,4 +310,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
