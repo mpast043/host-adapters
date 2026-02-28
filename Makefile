@@ -1,4 +1,4 @@
-.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check
+.PHONY: all install test test-fast lint format clean workflow-auto workflow-audit openclaw-opt-check local-compute-mcp
 
 PYTHON := python3
 PIP := pip3
@@ -47,3 +47,6 @@ workflow-audit:
 
 openclaw-opt-check:
 	$(PYTHON) tools/openclaw_opt_check.py --output "$(DATA_REPO)/openclaw_adapter_data/openclaw_opt_check_latest.json"
+
+local-compute-mcp:
+	$(PYTHON) tools/local_compute_mcp.py

@@ -207,22 +207,24 @@ def parse_mcporter_targets(mcporter_list_text: str) -> tuple[str | None, str | N
         if l.lower().startswith("name") or l.lower().startswith("---"):
             continue
 
-        # Best effort: first token is often the server name.
-        token_match = re.match(r"^([A-Za-z0-9._-]+)", l)
-        if token_match:
-            token = token_match.group(1)
-            if token != "-":
-                discovered.append(token)
+        # mcporter list lines are typically bullet-form:
+        # - server-name (N tools, ...)
+        bullet_match = re.match(r"^-\s+([^\s(]+)", l)
+        token = bullet_match.group(1) if bullet_match else None
+        if token:
+            discovered.append(token)
 
         ll = l.lower()
-        online_like = any(word in ll for word in ["online", "connected", "healthy", "running"])
+        has_tools_count = bool(re.search(r"\(\s*\d+\s+tools?\b", ll))
+        has_bad_status = any(word in ll for word in ["offline", "auth required", "error", "failed"])
+        online_like = (any(word in ll for word in ["online", "connected", "healthy", "running"]) or has_tools_count) and not has_bad_status
         if not online_like:
             continue
 
         if compute_target is None and any(k in ll for k in ["compute", "cpu", "gpu", "executor"]):
-            compute_target = token_match.group(1) if token_match else l
+            compute_target = token or l
         if docs_target is None and any(k in ll for k in ["docs", "document", "notion", "drive", "pdf"]):
-            docs_target = token_match.group(1) if token_match else l
+            docs_target = token or l
 
     return compute_target, docs_target, sorted(set(discovered))
 
