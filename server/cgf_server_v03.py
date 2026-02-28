@@ -329,10 +329,17 @@ def _evaluate_with_policy_engine(proposal: Any, context: Any, signals: Any, deci
     proposal_dict = {
         "action_type": proposal.action_type.value if hasattr(proposal.action_type, 'value') else str(proposal.action_type),
         "tool_name": proposal.action_params.get("tool_name", ""),
+        "target_path": proposal.action_params.get("target_path", ""),
         "size_bytes": proposal.action_params.get("size_bytes", 0),
         "sensitivity_hint": proposal.action_params.get("sensitivity_hint", "medium"),
         "risk_tier": proposal.risk_tier.value if hasattr(proposal.risk_tier, 'value') else str(proposal.risk_tier),
-        "estimated_cost": {"tokens": proposal.action_params.get("estimated_tokens", 0)}
+        "estimated_cost": {
+            "tokens": (
+                proposal.estimated_cost.get("tokens", 0)
+                if isinstance(getattr(proposal, "estimated_cost", None), dict)
+                else proposal.action_params.get("estimated_tokens", 0)
+            )
+        }
     }
     
     # Build context dict

@@ -13,6 +13,7 @@ ALLOWED_FIELDS = {
     # Proposal fields
     "proposal.action_type": "Action type (tool_call, memory_write, message_send, workflow_step)",
     "proposal.tool_name": "Tool identifier for tool_call actions",
+    "proposal.target_path": "Target path hint for path-scoped tool policies",
     "proposal.size_bytes": "Size for memory operations",
     "proposal.sensitivity_hint": "Sensitivity level (low, medium, high)",
     "proposal.risk_tier": "Risk tier (low, medium, high)",

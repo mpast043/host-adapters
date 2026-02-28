@@ -300,26 +300,68 @@ async function reportOutcome(proposalId, decisionId, outcome) {
 
 // ============== TOOL CALL INTERCEPTION ==============
 
+function extractTargetPath(toolArgs) {
+  if (!toolArgs || typeof toolArgs !== 'object' || Array.isArray(toolArgs)) {
+    return null;
+  }
+  for (const key of ['path', 'file', 'filepath', 'filename', 'target', 'storePath', 'output', 'out_path']) {
+    const value = toolArgs[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizeToolName(toolName, toolArgs) {
+  const name = String(toolName || '').trim();
+  if (['exec', 'shell', 'bash', 'python_exec', 'subprocess'].includes(name) && toolArgs && typeof toolArgs === 'object') {
+    const commandParts = [];
+    for (const key of ['cmd', 'command', 'shell_command', 'script', 'input']) {
+      const value = toolArgs[key];
+      if (typeof value === 'string') {
+        commandParts.push(value.toLowerCase());
+      }
+    }
+    const commandBlob = commandParts.join(' ');
+    if (
+      commandBlob.includes('workflow-auto') ||
+      commandBlob.includes('make workflow-auto') ||
+      commandBlob.includes('run_workflow_auto.py') ||
+      commandBlob.includes('tools/run_workflow_auto.py')
+    ) {
+      return 'workflow_auto_exec';
+    }
+  }
+  return name;
+}
+
 function observeToolProposal(toolName, toolArgs, sessionKey, agentId) {
   state.proposalCount++;
+  const normalizedToolName = normalizeToolName(toolName, toolArgs);
+  const targetPath = extractTargetPath(toolArgs);
   
   const argsStr = JSON.stringify(toolArgs);
   const argsHash = hashContent(argsStr).slice(0, 32);
   
-  const sideEffectTools = new Set(['file_write', 'fs_write', 'write', 'save', 'exec', 'shell', 'eval']);
-  const riskTier = sideEffectTools.has(toolName) ? 'high' : 'medium';
+  const sideEffectTools = new Set(['file_write', 'fs_write', 'write', 'save', 'exec', 'shell', 'eval', 'workflow_auto_exec']);
+  const riskTier = sideEffectTools.has(normalizedToolName) ? 'high' : 'medium';
+  const actionParams = {
+    tool_name: normalizedToolName,
+    tool_args_hash: argsHash,
+    side_effects_hint: sideEffectTools.has(normalizedToolName) ? ['write'] : [],
+    idempotent_hint: false,
+    resource_hints: []
+  };
+  if (targetPath) {
+    actionParams.target_path = targetPath;
+  }
   
   return {
     proposal_id: generateId('prop'),
     timestamp: Date.now() / 1000,
     action_type: 'tool_call',
-    action_params: {
-      tool_name: toolName,
-      tool_args_hash: argsHash,
-      side_effects_hint: sideEffectTools.has(toolName) ? ['write'] : [],
-      idempotent_hint: false,
-      resource_hints: []
-    },
+    action_params: actionParams,
     context_refs: [sessionKey || 'unknown', agentId || 'unknown'],
     estimated_cost: { tokens: Math.floor(argsStr.length / 4), latency_ms: 500 },
     risk_tier: riskTier,

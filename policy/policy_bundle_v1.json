@@ -1,6 +1,6 @@
 {
   "policy_version": "1.0.0",
-  "bundle_hash": "598b95472c3594c85486acf855a288d5d0a5019c28acafba99779d4c62fabbea",
+  "bundle_hash": "95ccb6c0075c806e73dc437787faf3235c81637a1086cbae863e4ac8a7e700dd",
   "rules": [
     {
       "id": "workflow-auto-exec-audit",
@@ -23,7 +23,7 @@
       "confidence": 0.95
     },
     {
-      "id": "small-write-audit",
+      "id": "memory-note-write-audit",
       "priority": 105,
       "when": [
         {
@@ -37,15 +37,20 @@
           "value": "write"
         },
         {
+          "field": "proposal.target_path",
+          "op": "regex",
+          "value": "(^|.*[\\\\/])memory[\\\\/].+\\.md$"
+        },
+        {
           "field": "proposal.estimated_cost.tokens",
           "op": "lte",
-          "value": 1500
+          "value": 12000
         }
       ],
       "decision": "AUDIT",
       "constraint": null,
       "audit": true,
-      "confidence": 0.9
+      "confidence": 0.92
     },
     {
       "id": "denylisted-tool",

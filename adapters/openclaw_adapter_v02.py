@@ -143,35 +143,69 @@ class OpenClawAdapter:
         return event
     
     # ============== OBSERVATION ==============
+
+    @staticmethod
+    def _extract_target_path(tool_args: Dict[str, Any]) -> Optional[str]:
+        """Best-effort extraction of a target path from tool arguments."""
+        if not isinstance(tool_args, dict):
+            return None
+        for key in ("path", "file", "filepath", "filename", "target", "storePath", "output", "out_path"):
+            value = tool_args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _normalize_tool_name(tool_name: str, tool_args: Dict[str, Any]) -> str:
+        """Map known autonomous workflow executions to audited aliases."""
+        name = str(tool_name or "").strip()
+        if name in {"exec", "shell", "bash", "python_exec", "subprocess"} and isinstance(tool_args, dict):
+            command_parts: List[str] = []
+            for key in ("cmd", "command", "shell_command", "script", "input"):
+                value = tool_args.get(key)
+                if isinstance(value, str):
+                    command_parts.append(value.lower())
+            command_blob = " ".join(command_parts)
+            if any(
+                marker in command_blob
+                for marker in ("workflow-auto", "make workflow-auto", "run_workflow_auto.py", "tools/run_workflow_auto.py")
+            ):
+                return "workflow_auto_exec"
+        return name
     
     def observe_proposal_tool(self, tool_name: str, tool_args: Dict, 
                               session_key: Optional[str], agent_id: Optional[str]) -> HostProposal:
         """Observe a tool call proposal."""
         self.proposal_count += 1
+        normalized_tool_name = self._normalize_tool_name(tool_name, tool_args)
+        target_path = self._extract_target_path(tool_args if isinstance(tool_args, dict) else {})
         
         # Canonicalize args for hash
         args_str = json.dumps(tool_args, sort_keys=True, separators=(',', ':'))
         args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:32]
         
         # Determine risk tier
-        side_effect_tools = {'file_write', 'fs_write', 'write', 'save', 'exec', 'shell', 'eval'}
-        risk_tier = RiskTier.HIGH if tool_name in side_effect_tools else RiskTier.MEDIUM
+        side_effect_tools = {'file_write', 'fs_write', 'write', 'save', 'exec', 'shell', 'eval', 'workflow_auto_exec'}
+        risk_tier = RiskTier.HIGH if normalized_tool_name in side_effect_tools else RiskTier.MEDIUM
         
         proposal_id = f"prop-{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
         
         params = ToolCallParams(
-            tool_name=tool_name,
+            tool_name=normalized_tool_name,
             tool_args_hash=args_hash,
-            side_effects_hint=["write"] if tool_name in side_effect_tools else [],
+            side_effects_hint=["write"] if normalized_tool_name in side_effect_tools else [],
             idempotent_hint=False,
             resource_hints=[]
         )
+        action_params = params.model_dump()
+        if target_path:
+            action_params["target_path"] = target_path
         
         return HostProposal(
             proposal_id=proposal_id,
             timestamp=datetime.now().timestamp(),
             action_type=ActionType.TOOL_CALL,
-            action_params=params.model_dump(),
+            action_params=action_params,
             context_refs=[session_key or "unknown", agent_id or "unknown"],
             estimated_cost={"tokens": len(args_str) // 4, "latency_ms": 500},
             risk_tier=risk_tier,
