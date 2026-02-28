@@ -19,6 +19,15 @@ Plugin is loaded from:
 Plugin config is stored in local OpenClaw config:
 - `/Users/meganpastore/.openclaw/openclaw.json`
 
+## Gateway Autostart (Local Keepalive)
+Because the stock `ai.openclaw.gateway` service was unstable in this environment, gateway autostart uses:
+- LaunchAgent label: `ai.openclaw.gateway.keepalive`
+- Plist: `/Users/meganpastore/Library/LaunchAgents/ai.openclaw.gateway.keepalive.plist`
+- Script: `/Users/meganpastore/.openclaw/bin/openclaw_gateway_keepalive.sh`
+- Logs:
+  - `/Users/meganpastore/.openclaw/logs/gateway.keepalive.out.log`
+  - `/Users/meganpastore/.openclaw/logs/gateway.keepalive.err.log`
+
 ## Local Runtime Patches Applied
 The local OpenClaw installation has been patched for governance hook enforcement in HTTP tool invocation and session-store gating.
 Backups created:
