@@ -252,6 +252,18 @@ def find_pdf(repo_root: Path, explicit_pdf: Path | None) -> Path | None:
     return None
 
 
+def choose_artifacts_root(repo_root: Path, explicit_root: Path | None) -> Path:
+    if explicit_root is not None:
+        return explicit_root.resolve()
+    env_root = os.environ.get("HOST_ADAPTERS_EXPERIMENTAL_DATA_DIR", "").strip()
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    default_external = Path("/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters")
+    if default_external.exists():
+        return default_external.resolve()
+    return repo_root
+
+
 def locate_baseline_runners(repo_root: Path) -> dict[str, Path]:
     candidates = {
         "claim2": [
@@ -406,12 +418,12 @@ def build_selection_outputs(
     return status, rows
 
 
-def package_retention(run_dir: Path, repo_root: Path) -> dict[str, Any]:
+def package_retention(run_dir: Path, artifacts_root: Path) -> dict[str, Any]:
     run_id = run_dir.name
-    retained_dir = repo_root / "retained_runs"
+    retained_dir = artifacts_root / "retained_runs"
     retained_dir.mkdir(parents=True, exist_ok=True)
 
-    temp_archive = repo_root / "tmp" / f"retained_{run_id}.tar.gz"
+    temp_archive = artifacts_root / "tmp" / f"retained_{run_id}.tar.gz"
     temp_archive.parent.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(temp_archive, "w:gz") as tar:
@@ -447,6 +459,12 @@ def package_retention(run_dir: Path, repo_root: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run WORKFLOW_AUTO orchestrator")
     parser.add_argument("--repo-root", type=Path, default=Path("."))
+    parser.add_argument(
+        "--artifacts-root",
+        type=Path,
+        default=None,
+        help="Directory where RUN_* and retained artifacts are written (defaults to external data repo when available)",
+    )
     parser.add_argument("--run-id", type=str, default="")
     parser.add_argument("--pdf-path", type=Path, default=None)
     parser.add_argument("--max-minutes", type=int, default=120)
@@ -461,10 +479,11 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
+    artifacts_root = choose_artifacts_root(repo_root, args.artifacts_root)
     python_exe = get_python(repo_root)
 
     run_id = args.run_id.strip() or f"RUN_{compact_ts()}"
-    run_dir = repo_root / run_id
+    run_dir = artifacts_root / run_id
     logs_dir = run_dir / "logs"
     results_dir = run_dir / "results"
     tmp_dir = run_dir / "tmp"
@@ -477,6 +496,7 @@ def main() -> int:
     manifest: dict[str, Any] = {
         "run_id": run_id,
         "repo_root": str(repo_root),
+        "artifacts_root": str(artifacts_root),
         "started_utc": utc_now(),
         "host": {
             "hostname": socket.gethostname(),
@@ -1373,12 +1393,12 @@ def main() -> int:
             "- LOCAL_ONLY downscoping auto-applied when compute MCP target is unavailable.",
             "",
             "## 6. Rerun commands",
-            f"- `python3 tools/run_workflow_auto.py --repo-root {repo_root}`",
+            f"- `python3 tools/run_workflow_auto.py --repo-root {repo_root} --artifacts-root {artifacts_root}`",
             f"- `python3 tools/validate_workflow_auto_run.py --run-dir {run_dir}`",
         ]
         (run_dir / "summary.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
-        retention = package_retention(run_dir, repo_root)
+        retention = package_retention(run_dir, artifacts_root)
         retention_status = "PASS"
         workflow_status["retention_status"] = retention_status
         write_json(results_dir / "workflow_auto_status.json", workflow_status)

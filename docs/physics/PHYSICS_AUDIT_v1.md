@@ -13,9 +13,9 @@ This audit separates three layers:
 Status: PASS on local checks.
 
 Evidence:
-- `capacity-demo` framework tests: `13 passed` (`docs/state/physics_audit_logs/tier_a_test_framework_b.txt`)
-- theorem validation tests: `12 passed` (`docs/state/physics_audit_logs/tier_a_test_theorem_validation.txt`)
-- quick validation harness completed (`docs/state/physics_audit_logs/tier_a_validation_harness_quick.txt`)
+- `capacity-demo` framework tests: `13 passed` (`/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/docs/state/physics_audit_logs/tier_a_test_framework_b.txt`)
+- theorem validation tests: `12 passed` (`/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/docs/state/physics_audit_logs/tier_a_test_theorem_validation.txt`)
+- quick validation harness completed (`/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/docs/state/physics_audit_logs/tier_a_validation_harness_quick.txt`)
 
 Interpretation:
 - The local theorem/consistency harness is healthy for the implemented assumptions and code paths.
@@ -54,7 +54,7 @@ Observed pattern:
 1. Claim family: internal consistency / regression integrity
 - PDF basis: pages 60-64 report stress-test claims as PASS.
 - Audit class: Bin A (under framework assumptions).
-- Code evidence: Tier A pass logs in `docs/state/physics_audit_logs/`.
+- Code evidence: Tier A pass logs in `/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters/docs/state/physics_audit_logs/`.
 
 2. Claim family: selection as separate observer component
 - PDF basis: page 25 (selection as additional degree of freedom), page 26 (selection as unformalized/dark component).

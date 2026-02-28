@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -45,9 +46,27 @@ def choose_python(repo: Path) -> str:
     return str(venv_py) if venv_py.exists() else "python3"
 
 
+def choose_data_root(host_repo: Path, explicit_root: Path | None) -> Path:
+    if explicit_root is not None:
+        return explicit_root.resolve()
+    env_root = os.environ.get("HOST_ADAPTERS_EXPERIMENTAL_DATA_DIR", "").strip()
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    default_external = Path("/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters")
+    if default_external.exists():
+        return default_external.resolve()
+    return host_repo
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run tiered physics audit")
     parser.add_argument("--host-repo", type=Path, default=Path("."))
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=None,
+        help="Directory for generated audit outputs (defaults to external data repo when available)",
+    )
     parser.add_argument(
         "--capacity-demo-repo",
         type=Path,
@@ -59,12 +78,19 @@ def main() -> int:
         action="store_true",
         help="Use reduced Tier B settings for quick matrix verification",
     )
-    parser.add_argument("--output-json", type=Path, default=Path("docs/state/physics_audit_2026-02-27.json"))
+    parser.add_argument("--output-json", type=Path, default=None)
     args = parser.parse_args()
 
     host_repo = args.host_repo.resolve()
+    data_root = choose_data_root(host_repo, args.data_root)
     cap_repo = args.capacity_demo_repo.resolve()
-    logs_dir = host_repo / "docs/state/physics_audit_logs"
+    logs_dir = data_root / "docs/state/physics_audit_logs"
+    if args.output_json is None:
+        output_json = data_root / "docs/state/physics_audit_2026-02-27.json"
+    elif args.output_json.is_absolute():
+        output_json = args.output_json
+    else:
+        output_json = (data_root / args.output_json).resolve()
 
     cap_py = choose_python(cap_repo)
     host_py = choose_python(host_repo)
@@ -155,9 +181,9 @@ def main() -> int:
             res = run_and_log(name, cmd, cwd, logs_dir)
             results["tier_b"].append(asdict(res))
 
-    args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    print(f"Wrote: {args.output_json}")
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    output_json.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    print(f"Wrote: {output_json}")
 
     failures = [x for x in results["tier_a"] if x["exit_code"] != 0]
     if args.run_tier_b:

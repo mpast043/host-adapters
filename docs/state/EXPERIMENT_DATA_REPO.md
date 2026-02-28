@@ -11,14 +11,21 @@ Heavy generated artifacts are separated from this code repository.
 - `host-adapters/retained_runs/`
 - `host-adapters/outputs/physics_audit/`
 - `host-adapters/docs/state/physics_audit_logs/`
+- `host-adapters/docs/state/evidence_index_2026-02-27.json`
+- `host-adapters/docs/state/physics_audit_2026-02-27.json`
+- `host-adapters/docs/state/validation_RUN_*.json`
+- `host-adapters/workflow_audit_latest.json`
 - `capacity-demo/outputs/framework_validation_b/` snapshot used by Tier A audit
 
 ## What Stays Here
 - Governance/runtime code (`server/`, `adapters/`, `tools/`)
 - Validation schemas and enforcement logic
-- Lightweight index/summary docs pointing to evidence
+- Pointer docs only (`docs/state/EXPERIMENT_DATA_REPO.md`, templates, product docs)
 
 ## Sync Policy
 1. Generate data with tools in this repo.
-2. Copy artifacts to the data repo under matching paths.
-3. Update `docs/state/evidence_index_2026-02-27.json` with canonical pointers.
+2. Write artifacts directly to the data repo:
+   - `make workflow-auto`
+   - `make workflow-audit`
+   - `python3 tools/run_physics_audit.py ...`
+3. Keep code repo free of generated run/audit artifacts.
