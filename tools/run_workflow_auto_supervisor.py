@@ -102,6 +102,40 @@ def read_plan_state(run_dir: Path) -> tuple[bool, list[str]]:
     return stop_triggered, tier_c_blocked
 
 
+def run_research_probe(repo_root: Path, run_dir: Path, underdetermined_cycles: int) -> dict:
+    output_json = run_dir / "results" / "research" / "research_signal.json"
+    output_md = run_dir / "results" / "research" / "research_signal.md"
+    cmd = [
+        "python3",
+        "tools/research_framework_selection.py",
+        "--run-dir",
+        str(run_dir),
+        "--underdetermined-cycles",
+        str(underdetermined_cycles),
+        "--output-json",
+        str(output_json),
+        "--output-md",
+        str(output_md),
+    ]
+    proc = subprocess.run(cmd, cwd=str(repo_root), text=True, capture_output=True, check=False)  # noqa: S603
+    if proc.stdout:
+        print(proc.stdout, end="")
+    if proc.stderr:
+        print(proc.stderr, end="")
+    if proc.returncode != 0:
+        return {"ok": False, "escalate_tier_c": False}
+    payload = _load_json(output_json)
+    rec = payload.get("recommendations", {})
+    return {
+        "ok": True,
+        "escalate_tier_c": bool(rec.get("escalate_tier_c", False)),
+        "recommended_execution_keys": rec.get("recommended_execution_keys", []),
+        "signal_score": rec.get("signal_score", 0),
+        "output_json": str(output_json),
+        "output_md": str(output_md),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Autonomous WORKFLOW_AUTO supervisor")
     parser.add_argument("--repo-root", type=Path, default=Path("."))
@@ -130,6 +164,16 @@ def main() -> int:
         default="Escalate Tier C to resolve persistent UNDERDETERMINED selection.",
         help="One-line justification used when Tier C override is enabled.",
     )
+    parser.add_argument(
+        "--research-on-underdetermined",
+        action="store_true",
+        help="Run external research probe on UNDERDETERMINED cycles.",
+    )
+    parser.add_argument(
+        "--research-auto-escalate-tier-c",
+        action="store_true",
+        help="If research recommends escalation, enable Tier C override next cycle.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -137,8 +181,10 @@ def main() -> int:
 
     seed = args.seed
     cycle = 1
+    underdetermined_streak = 0
+    dynamic_tier_c = False
     while True:
-        tier_c_enabled = bool(args.tier_c_after_cycle) and cycle >= args.tier_c_after_cycle
+        tier_c_enabled = dynamic_tier_c or (bool(args.tier_c_after_cycle) and cycle >= args.tier_c_after_cycle)
         cycle_label = f"{cycle}/∞" if args.until_resolved else f"{cycle}/{args.max_cycles}"
         print(
             f"[workflow-auto-supervisor] cycle={cycle_label} seed={seed} "
@@ -169,6 +215,23 @@ def main() -> int:
 
         # Continue automatically when the run is still underdetermined.
         if selection == "UNDERDETERMINED":
+            underdetermined_streak += 1
+            if args.research_on_underdetermined:
+                research = run_research_probe(repo_root, run_dir, underdetermined_streak)
+                print(
+                    "[workflow-auto-supervisor] research_probe "
+                    f"ok={research.get('ok', False)} "
+                    f"signal_score={research.get('signal_score', 0)} "
+                    f"escalate_tier_c={research.get('escalate_tier_c', False)}"
+                )
+                if (
+                    args.research_auto_escalate_tier_c
+                    and bool(research.get("escalate_tier_c", False))
+                    and not tier_c_enabled
+                ):
+                    dynamic_tier_c = True
+                    print("[workflow-auto-supervisor] Tier C override enabled from research recommendation")
+
             if args.until_resolved:
                 seed += 1
                 cycle += 1
@@ -193,6 +256,8 @@ def main() -> int:
                 )
             print(f"[workflow-auto-supervisor] {reason}")
             return 2
+
+        underdetermined_streak = 0
 
         # PARTIAL with non-undertermined outcome, or max cycles hit.
         return 0

@@ -8,6 +8,8 @@ WORKFLOW_SLEEP_SECONDS ?= 2
 WORKFLOW_UNTIL_RESOLVED ?= 0
 WORKFLOW_TIER_C_AFTER_CYCLE ?=
 WORKFLOW_TIER_C_JUSTIFICATION ?= Escalate Tier C to resolve persistent UNDERDETERMINED selection
+WORKFLOW_RESEARCH_ON_UNDERDETERMINED ?= 1
+WORKFLOW_RESEARCH_AUTO_ESCALATE_TIER_C ?= 1
 
 all: install test
 
@@ -39,7 +41,7 @@ clean:
 	rm -rf **/__pycache__ .pytest_cache *.log *.jsonl
 
 workflow-auto:
-	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles $(WORKFLOW_MAX_CYCLES) --sleep-seconds $(WORKFLOW_SLEEP_SECONDS) $(if $(filter 1,$(WORKFLOW_UNTIL_RESOLVED)),--until-resolved,) $(if $(WORKFLOW_TIER_C_AFTER_CYCLE),--tier-c-after-cycle $(WORKFLOW_TIER_C_AFTER_CYCLE),) $(if $(WORKFLOW_TIER_C_JUSTIFICATION),--tier-c-justification "$(WORKFLOW_TIER_C_JUSTIFICATION)",)
+	$(PYTHON) tools/run_workflow_auto_supervisor.py --repo-root . --artifacts-root "$(DATA_REPO)" --max-cycles $(WORKFLOW_MAX_CYCLES) --sleep-seconds $(WORKFLOW_SLEEP_SECONDS) $(if $(filter 1,$(WORKFLOW_UNTIL_RESOLVED)),--until-resolved,) $(if $(WORKFLOW_TIER_C_AFTER_CYCLE),--tier-c-after-cycle $(WORKFLOW_TIER_C_AFTER_CYCLE),) $(if $(WORKFLOW_TIER_C_JUSTIFICATION),--tier-c-justification "$(WORKFLOW_TIER_C_JUSTIFICATION)",) $(if $(filter 1,$(WORKFLOW_RESEARCH_ON_UNDERDETERMINED)),--research-on-underdetermined,) $(if $(filter 1,$(WORKFLOW_RESEARCH_AUTO_ESCALATE_TIER_C)),--research-auto-escalate-tier-c,)
 
 workflow-auto-once:
 	$(PYTHON) tools/run_workflow_auto.py --repo-root . --artifacts-root "$(DATA_REPO)" --resume-latest
