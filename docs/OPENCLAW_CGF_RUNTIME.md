@@ -2,7 +2,7 @@
 
 ## Scope
 This repo contains the OpenClaw governance plugin source:
-- `plugins/cgf-governance/index.ts`
+- `plugins/cgf-governance/cgf-governance.ts`
 - `plugins/cgf-governance/openclaw.plugin.json`
 
 ## Runtime Data Location
@@ -14,7 +14,7 @@ Local compatibility symlink (ignored by git):
 
 ## Active OpenClaw Config
 Plugin is loaded from:
-- `/tmp/openclaws/Repos/host-adapters/plugins/cgf-governance/index.ts`
+- `/tmp/openclaws/Repos/host-adapters/plugins/cgf-governance/cgf-governance.ts`
 
 Plugin config is stored in local OpenClaw config:
 - `/Users/meganpastore/.openclaw/openclaw.json`
