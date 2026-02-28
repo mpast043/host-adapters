@@ -66,6 +66,7 @@ def run_role(
     underdetermined_cycles: int,
     agentic_dir: Path,
     focus_objective: str,
+    resume_latest: bool = False,
 ) -> dict[str, Any]:
     output_json = agentic_dir / f"{role}_result_cycle_{cycle:03d}.json"
     cmd = [
@@ -96,6 +97,8 @@ def run_role(
     ]
     if run_dir is not None:
         cmd.extend(["--run-dir", str(run_dir)])
+    if resume_latest:
+        cmd.append("--resume-latest")
     if allow_tier_c:
         cmd.append("--allow-tier-c")
 
@@ -146,13 +149,18 @@ def main() -> int:
         choices=["ALL", "A", "B", "C"],
         help="Critical-path objective focus for planning/execution.",
     )
+    parser.add_argument(
+        "--start-fresh",
+        action="store_true",
+        help="Start a new RUN_* instead of resuming the latest run.",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
     artifacts_root = args.artifacts_root.resolve()
 
     # Bootstrap run if needed.
-    run_dir = latest_run_dir(artifacts_root)
+    run_dir = None if args.start_fresh else latest_run_dir(artifacts_root)
     if run_dir is None:
         bootstrap_dir = artifacts_root / "agentic_bootstrap"
         bootstrap = run_role(
@@ -169,6 +177,7 @@ def main() -> int:
             underdetermined_cycles=0,
             agentic_dir=bootstrap_dir,
             focus_objective=args.focus_objective,
+            resume_latest=not args.start_fresh,
         )
         run_dir_value = ((bootstrap.get("result") or {}).get("run_dir") or "").strip()
         run_dir = Path(run_dir_value) if run_dir_value else latest_run_dir(artifacts_root)
@@ -272,6 +281,7 @@ def main() -> int:
             underdetermined_cycles=underdetermined_streak,
             agentic_dir=agentic_dir,
             focus_objective=args.focus_objective,
+            resume_latest=False,
         )
         append_event(events_path, {"ts_utc": utc_now(), "event": "executor_finished", **executor_event})
 

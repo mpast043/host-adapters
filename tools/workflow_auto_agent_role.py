@@ -188,11 +188,13 @@ def role_executor(
     *,
     repo_root: Path,
     artifacts_root: Path,
+    run_dir: Path | None,
     cycle: int,
     seed: int,
     allow_tier_c: bool,
     tier_c_justification: str,
     focus_objective: str,
+    resume_latest: bool,
 ) -> dict[str, Any]:
     cmd = [
         "python3",
@@ -201,12 +203,15 @@ def role_executor(
         str(repo_root),
         "--artifacts-root",
         str(artifacts_root),
-        "--resume-latest",
         "--seed",
         str(seed),
         "--focus-objective",
         focus_objective,
     ]
+    if run_dir is not None:
+        cmd.extend(["--run-id", run_dir.name, "--resume"])
+    elif resume_latest:
+        cmd.append("--resume-latest")
     if allow_tier_c:
         cmd.extend(["--tier-c-justification", tier_c_justification.strip()])
     env = os.environ.copy()
@@ -266,23 +271,29 @@ def main() -> int:
         default="Escalate Tier C to resolve persistent UNDERDETERMINED selection.",
     )
     parser.add_argument("--underdetermined-cycles", type=int, default=1)
+    parser.add_argument("--resume-latest", action="store_true")
     parser.add_argument("--output-json", type=Path, required=True)
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
     artifacts_root = args.artifacts_root.resolve()
-    run_dir = args.run_dir.resolve() if args.run_dir else latest_run_dir(artifacts_root)
+    run_dir_arg = args.run_dir.resolve() if args.run_dir else None
+    run_dir = run_dir_arg
+    if run_dir is None and args.role in {"planner", "researcher"}:
+        run_dir = latest_run_dir(artifacts_root)
 
     result: dict[str, Any]
     if args.role == "executor":
         result = role_executor(
             repo_root=repo_root,
             artifacts_root=artifacts_root,
+            run_dir=run_dir,
             cycle=args.cycle,
             seed=args.seed,
             allow_tier_c=args.allow_tier_c,
             tier_c_justification=args.tier_c_justification,
             focus_objective=args.focus_objective,
+            resume_latest=args.resume_latest,
         )
     else:
         if run_dir is None:

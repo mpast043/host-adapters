@@ -91,6 +91,8 @@ cd /tmp/openclaws/Repos/host-adapters
 make workflow-physics-auto DATA_REPO=/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters
 ```
 
+The target uses fresh-run startup by default (`WORKFLOW_START_FRESH=1`) to avoid looping on an already-resolved run.
+
 General agentic loop with custom focus:
 
 ```bash

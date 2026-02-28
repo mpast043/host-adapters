@@ -29,6 +29,10 @@ Run math/physics autonomy mode (focus B, external research enabled, Tier C still
 make workflow-physics-auto DATA_REPO=/tmp/openclaws/Repos/host-adapters-experimental-data/host-adapters
 ```
 
+Notes:
+- `workflow-physics-auto` starts fresh by default (`WORKFLOW_START_FRESH=1`) so it does not keep reusing an already-resolved run.
+- Set `WORKFLOW_START_FRESH=0` only if you intentionally want to resume the latest run.
+
 Run legacy supervisor mode:
 
 ```bash
