@@ -50,6 +50,7 @@ Thumbs.db
 cgf_data/
 langgraph_cgf_data/
 openclaw_adapter_data/
+openclaw_adapter_data
 outputs/
 outputs/framework_run_*/
 RUN_*/

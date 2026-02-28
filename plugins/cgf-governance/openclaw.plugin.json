@@ -1,0 +1,32 @@
+{
+  "id": "cgf-governance",
+  "name": "CGF Governance Runtime",
+  "description": "Runtime governance for OpenClaw tool calls and session-store writes via CGF.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "cgfEndpoint": {
+        "type": "string"
+      },
+      "authToken": {
+        "type": "string"
+      },
+      "timeoutMs": {
+        "type": "number"
+      },
+      "schemaVersion": {
+        "type": "string"
+      },
+      "adapterType": {
+        "type": "string"
+      },
+      "dataDir": {
+        "type": "string"
+      },
+      "registerCooldownMs": {
+        "type": "number"
+      }
+    }
+  }
+}
