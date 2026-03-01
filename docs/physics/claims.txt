@@ -1,0 +1,26 @@
+# Framework Selection Claims
+# One claim per line, comments start with #
+
+# Observer structure claims (W02-W20)
+W02
+W03
+W04
+W06
+W07
+W08
+W09
+W10
+W11
+W12
+W13
+W14
+W15
+W16
+W17
+W18
+W19
+W20
+
+# Regression claims
+claim2_seed_perturbation
+claim3_optionb_regime_check

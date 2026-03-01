@@ -76,3 +76,25 @@ local-compute-mcp:
 
 framework-selection-plan:
 	$(PYTHON) tools/plan_framework_selection_tests.py --repo-root . --artifacts-root "$(DATA_REPO)"
+
+# Step 3 Truth Infrastructure targets
+STEP3_TRUTH_DIR ?= experiments/truth/truth_labels
+STEP3_CLAIMS ?= docs/physics/claims.txt
+
+.PHONY: step3-truth-generate step3-truth-validate step3-verify
+
+step3-truth-generate:
+	$(PYTHON) -m experiments.truth.truth_generator generate --claims $(STEP3_CLAIMS)
+
+step3-truth-validate:
+	$(PYTHON) -m experiments.truth.truth_generator validate
+
+step3-verify:
+	@if [ -z "$(RUN_DIR)" ]; then \
+		echo "Error: RUN_DIR is required. Usage: make step3-verify RUN_DIR=/path/to/run"; \
+		exit 1; \
+	fi
+	$(PYTHON) -m experiments.verification.run_step3 \
+		--claims $(STEP3_CLAIMS) \
+		--science-dir "$(RUN_DIR)" \
+		--out "$(RUN_DIR)/results/step3"

@@ -1,0 +1,15 @@
+{
+  "artifacts": null,
+  "claim_id": "W02",
+  "confidence": 1.0,
+  "evidence_sha256": null,
+  "expected": {
+    "should_pass": true
+  },
+  "schema_version": "truth.v1",
+  "seed": null,
+  "source": "analytical_theorem",
+  "substrate_id": null,
+  "tolerance": {},
+  "truth_type": "boolean"
+}
