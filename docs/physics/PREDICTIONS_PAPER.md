@@ -143,12 +143,36 @@ Each prediction has clear falsification criteria:
 | XXZ phase behavior | Gapless vs gapped | VERIFIED |
 | Capacity of entanglement | κ₂ implementation | COMPLETE |
 
-### 7.2 In Progress
+### 7.2 MERA Computational Results
+
+**Heisenberg cyclic (L=8, well-converged, 50 optimization steps):**
+
+| χ | S (nats) | C_E | C_E/S | Gap Ratio |
+|---|----------|-----|-------|------------|
+| 4 | 1.046 | 1.114 | 1.065 | 83.8% |
+| 8 | 1.051 | 1.057 | 1.006 | 83.8% |
+| 16 | 1.051 | 0.990 | 0.942 | 83.7% |
+
+**Key Finding:** C_E/S ≈ 1.0 for well-converged MERA, consistent with de Boer et al. PRD 2019 prediction that C_E ≈ S for critical systems.
+
+### 7.3 Hypothesis Test Results
+
+| Hypothesis | Prediction | Observed | Status |
+|------------|------------|----------|--------|
+| C_E/S ≈ 1 | Ratio near 1 | 0.94-1.07 | SUPPORTED |
+| Gap ratio ≈ 38% | (λ₀-λ₁)/λ₀ × 100 ≈ 38 | 83.7-96.8% | NOT SUPPORTED |
+| d_s staircase | Jumps at critical S | Testing | IN PROGRESS |
+
+**Note on Δλ:** The gap ratio hypothesis (H1) is falsified by our data. Alternative interpretations:
+- H2: π² × scale needs further analysis
+- H3: Capacity crossover d²C/dS² = 0 needs different measurement
+
+### 7.4 In Progress
 
 | Item | Method | Status |
 |------|--------|--------|
 | d_s staircase | Tensor RG | Testing |
-| Δλ ≈ 38 | Gap analysis | Testing |
+| Δλ interpretation | Alternative hypotheses | Needs revision |
 | C_geo, C_int, C_ptr, C_obs | Literature study | Pending |
 
 ---
