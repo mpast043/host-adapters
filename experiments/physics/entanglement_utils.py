@@ -487,3 +487,35 @@ def analyze_capacity_entanglement_correlation(
         'n_points': len(capacities),
         'correlation': float(result.rvalue)
     }
+
+
+def analyze_capacity_entropy_ratio(results: List[Dict]) -> Dict:
+    """Analyze C_E / S ratio across models.
+
+    For critical 1+1D systems, we expect C_E and S to both scale
+    logarithmically with system size, but with different coefficients.
+
+    Args:
+        results: List of dicts with 'entropy' and 'capacity_of_entanglement' keys
+
+    Returns:
+        Dict with ratio analysis
+    """
+    ratios = []
+    for r in results:
+        S = r.get("entropy") or r.get("S")
+        C_E = r.get("capacity_of_entanglement") or r.get("C_E")
+        if S is not None and C_E is not None and S > 0:
+            ratios.append(C_E / S)
+
+    if not ratios:
+        return {"error": "No valid data points"}
+
+    return {
+        "mean_ratio": float(np.mean(ratios)),
+        "std_ratio": float(np.std(ratios)),
+        "min_ratio": float(np.min(ratios)),
+        "max_ratio": float(np.max(ratios)),
+        "n_points": len(ratios),
+        "ratios": ratios,
+    }
