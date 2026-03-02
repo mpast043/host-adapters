@@ -92,6 +92,11 @@ def compute_entanglement_entropy_from_rho_A(rho_A: np.ndarray) -> float:
 def compute_entanglement_entropy_sparse(psi: np.ndarray, L: int, A_size: int) -> float:
     """Von Neumann entropy using partial trace contraction.
     Only ever forms rho_A (size 2^A × 2^A), NEVER full rho.
+
+    Note: This local implementation is kept for backward compatibility with existing
+    MERA code paths. For new ED (Exact Diagonalization) reference data, the
+    `entanglement_utils` module provides a more comprehensive interface with
+    additional functionality like entanglement spectrum and gap computation.
     """
     dim_A = 2**A_size
     # psi has shape (2^L,) - reshape to tensor network
@@ -635,9 +640,9 @@ def main():
         L=config.L, model=config.model, A_size=config.A_size, j=config.j, h=config.h
     )
 
-    # Compute entanglement entropy for half-chain using entanglement_utils
+    # Compute entanglement entropy using entanglement_utils
     psi_ed = ed_result.ground_state_psi
-    subsystem_A = list(range(config.L // 2))
+    subsystem_A = list(range(config.A_size if hasattr(config, 'A_size') and config.A_size else config.L // 2))
     ed_entanglement = {}
     try:
         rho_A = reduced_density_matrix(psi_ed, subsystem_A, config.L)
@@ -645,6 +650,7 @@ def main():
         ed_entanglement["entanglement_spectrum"] = entanglement_spectrum(rho_A).tolist()
         ed_entanglement["entanglement_gap"] = entanglement_gap(rho_A)
     except Exception as e:
+        print(f"  [ED] Warning: entanglement computation failed: {e}")
         ed_entanglement["entanglement_entropy"] = None
         ed_entanglement["entanglement_spectrum"] = None
         ed_entanglement["entanglement_gap"] = None
