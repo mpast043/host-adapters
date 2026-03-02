@@ -1,0 +1,32 @@
+[
+  {
+    "chi": 2,
+    "entanglement_entropy": 0.685388486511781,
+    "capacity": 0.3426942432558905
+  },
+  {
+    "chi": 4,
+    "entanglement_entropy": 1.3467703347757762,
+    "capacity": 0.6733851673878881
+  },
+  {
+    "chi": 8,
+    "entanglement_entropy": 2.102095594165089,
+    "capacity": 1.0510477970825445
+  },
+  {
+    "chi": 16,
+    "entanglement_entropy": 2.8041102684468453,
+    "capacity": 1.4020551342234226
+  },
+  {
+    "chi": 32,
+    "entanglement_entropy": 3.4580583597879255,
+    "capacity": 1.7290291798939628
+  },
+  {
+    "chi": 64,
+    "entanglement_entropy": 4.167357633551661,
+    "capacity": 2.0836788167758304
+  }
+]

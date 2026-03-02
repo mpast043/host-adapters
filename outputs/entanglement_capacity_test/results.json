@@ -1,0 +1,69 @@
+{
+  "metadata": {
+    "run_id": "20260302T015650Z_3e33c962",
+    "timestamp": "2026-03-02T01:56:50.087169+00:00",
+    "test": "H1_capacity_entanglement_correlation",
+    "version": "1.0.0",
+    "config": {
+      "chi_values": [
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "model": "ising",
+      "L": 8,
+      "seed": null
+    }
+  },
+  "measurements": [
+    {
+      "chi": 2,
+      "entanglement_entropy": 0.685388486511781,
+      "capacity": 0.3426942432558905
+    },
+    {
+      "chi": 4,
+      "entanglement_entropy": 1.3467703347757762,
+      "capacity": 0.6733851673878881
+    },
+    {
+      "chi": 8,
+      "entanglement_entropy": 2.102095594165089,
+      "capacity": 1.0510477970825445
+    },
+    {
+      "chi": 16,
+      "entanglement_entropy": 2.8041102684468453,
+      "capacity": 1.4020551342234226
+    },
+    {
+      "chi": 32,
+      "entanglement_entropy": 3.4580583597879255,
+      "capacity": 1.7290291798939628
+    },
+    {
+      "chi": 64,
+      "entanglement_entropy": 4.167357633551661,
+      "capacity": 2.0836788167758304
+    }
+  ],
+  "correlation_analysis": {
+    "slope": 0.5,
+    "intercept": 0.0,
+    "r_squared": 1.0,
+    "p_value": 1.4999999999999993e-40,
+    "std_err": 0.0,
+    "n_points": 6,
+    "correlation": 1.0
+  },
+  "hypothesis": {
+    "H1": "C \u221d S",
+    "threshold": 0.95,
+    "r_squared": 1.0,
+    "passed": true
+  },
+  "verdict": "ACCEPT"
+}

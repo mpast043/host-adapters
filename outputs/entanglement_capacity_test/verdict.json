@@ -1,0 +1,14 @@
+{
+  "test": "H1",
+  "verdict": "ACCEPT",
+  "status": "COMPLETE",
+  "hypothesis": {
+    "H1": "C \u221d S",
+    "threshold": 0.95,
+    "r_squared": 1.0,
+    "passed": true
+  },
+  "passed": {
+    "H1_correlation": true
+  }
+}
