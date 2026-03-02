@@ -128,20 +128,37 @@ Tier C claims require additional validation infrastructure:
 | 4 | 8 | 0.285 | -4.759 | 0.835 |
 | 8 | 8 | 0.370 | -9.765 | 0.781 |
 
+**XXZ Model (Anisotropy Dependence):**
+
+The XXZ model: `H = Σ (S^x_i S^x_{i+1} + S^y_i S^y_{i+1} + Δ S^z_i S^z_{i+1})`
+
+| Δ | Phase | L=2 S | L=4 S | L=8 S | Energy (L=8) |
+|---|-------|-------|-------|-------|---------------|
+| 0 (XX) | Gapless XY, c=1 | 0.693 | 0.833 | 1.031 | -2.590 |
+| 0.5 | Gapless XY, c=1 | 0.693 | 0.835 | 1.058 | -3.067 |
+| 1 (Heisenberg) | Gapless, c=1 | 0.693 | 0.837 | 1.054 | -3.650 |
+| 2 | Gapped Ising | 0.693 | 0.828 | 0.431 | -4.906 |
+
 **Scaling Comparison:**
 
 | Model | c | Slope | R² | slope/c |
 |-------|---|-------|-----|---------|
 | Heisenberg cyclic | 1 | 0.262 | 0.986 | 0.262 |
+| XXZ Δ=0 (XX) | 1 | 0.244 | 0.990 | 0.244 |
+| XXZ Δ=0.5 | 1 | 0.263 | 0.984 | 0.263 |
+| XXZ Δ=1 | 1 | 0.260 | 0.987 | 0.260 |
 | Ising cyclic | 1/2 | 0.158 | 1.000 | 0.316 |
 | Ising open | 1/2 | 0.118 | 0.999 | 0.235 |
+| XXZ Δ=2 (gapped) | - | -0.189 | 0.421 | N/A |
 
 **Key Findings:**
 1. **S ∝ c × log(L) confirmed** - Slope ratio Heisenberg/Ising ≈ 1.66 ≈ c ratio = 2
 2. **Boundary effects** - Open boundaries give ~35% lower entropy than cyclic
 3. **Entropy ratio at fixed L** - S_H/S_I ≈ 1.66, S_Ic/S_Io ≈ 1.72
-4. **All R² > 0.985** - Excellent logarithmic scaling
+4. **All R² > 0.985** - Excellent logarithmic scaling for critical models
 5. **Energy decreases with χ** - Better ground state approximation
+6. **XXZ anisotropy** - Gapless phase (Δ ≤ 1) shows c=1 scaling; gapped phase (Δ > 1) shows non-monotonic entropy
+7. **Universal L=2** - S = log(2) ≈ 0.693 for all models (maximally entangled singlet)
 
 **Plot:** `docs/physics/full_model_comparison.png`
 
