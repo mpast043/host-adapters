@@ -104,18 +104,30 @@ Tier C claims require additional validation infrastructure:
 
 ### Real MERA Results (Heisenberg cyclic)
 
-| System Size (L) | Bond Dim (χ) | Entropy (S) | Energy | Gap |
-|-----------------|--------------|-------------|--------|-----|
-| 8 | 4 | 1.046 nats | -3.613 | 0.569 |
-| 8 | 8 | 1.051 nats | -3.644 | 0.563 |
-| 8 | 16 | 1.051 nats | -3.651 | 0.557 |
-| 4 | 8 | 0.837 nats | -2.000 | 0.667 |
+**L Sweep (System Size):**
+
+| L | χ | S (nats) | Energy | Gap | Notes |
+|---|---|----------|--------|-----|-------|
+| 2 | 8 | 0.693 | -1.500 | 0.000 | Exact: S = log(2) |
+| 4 | 8 | 0.837 | -2.000 | 0.667 | |
+| 8 | 8 | 1.056 | -3.644 | 0.563 | |
+| 16 | 16 | 0.887 | -6.974 | 0.612 | Needs more optimization |
+
+**χ Sweep (Bond Dimension at L=8):**
+
+| L | χ | S (nats) | Energy | Gap |
+|---|---|----------|--------|-----|
+| 8 | 4 | 1.046 | -3.613 | 0.569 |
+| 8 | 8 | 1.056 | -3.644 | 0.563 |
+| 8 | 16 | 1.051 | -3.651 | 0.557 |
 
 **Key Findings:**
-- For fixed L, entropy S is nearly constant across bond dimensions (state physics, not χ)
-- For critical systems, S scales logarithmically with L (S ∝ log L)
-- Energy decreases with χ (better ground state approximation)
-- Entanglement gap decreases with χ (degeneracy increases)
+1. **Entropy S increases with system size L** (as expected for critical systems: S ∝ log L)
+2. **Entropy S is nearly constant across χ** for fixed L (state physics, not ansatz capacity)
+3. **L=2 gives S = log(2)** exactly - correct for 2-qubit maximally entangled state
+4. **Energy decreases with χ** (better ground state approximation)
+5. **Entanglement gap decreases with χ** (spectrum becomes more degenerate)
+6. **L=16 may need more optimization** to converge (S < L=8 is unexpected)
 
 ---
 
