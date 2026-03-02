@@ -19,6 +19,7 @@ from experiments.physics.entanglement_utils import (
     reduced_density_matrix,
     entanglement_spectrum,
     entanglement_gap,
+    capacity_of_entanglement,
     capacity_from_entanglement,
     analyze_capacity_entanglement_correlation,
 )
@@ -280,6 +281,40 @@ class TestEntanglementGap:
         rho_mixed = np.array([[0.5, 0.0], [0.0, 0.5]], dtype=complex)
         gap = entanglement_gap(rho_mixed)
         assert np.isclose(gap, 0.0, atol=1e-10)
+
+
+class TestCapacityOfEntanglement:
+    """Tests for capacity_of_entanglement function."""
+
+    def test_capacity_of_entanglement_maximally_mixed(self):
+        """Maximally mixed state: C_E = 0 (H_A = const, so Var = 0)."""
+        # For maximally mixed state, H_A = ln(d) is constant, so C_E = 0
+        rho = 0.5 * np.eye(2)
+        C = capacity_of_entanglement(rho)
+        assert np.isclose(C, 0.0, atol=1e-10)
+
+    def test_capacity_of_entanglement_pure_state(self):
+        """Pure state has zero capacity (single eigenvalue)."""
+        rho = np.array([[1.0, 0.0], [0.0, 0.0]], dtype=complex)
+        C = capacity_of_entanglement(rho)
+        assert np.isclose(C, 0.0, atol=1e-10)
+
+    def test_capacity_of_entanglement_partially_mixed(self):
+        """Partially mixed state has non-zero capacity."""
+        # For eigenvalues [0.7, 0.3], C_E should be ~0.151
+        rho = np.array([[0.7, 0.0], [0.0, 0.3]], dtype=complex)
+        C = capacity_of_entanglement(rho)
+        # Verify it's positive and reasonable
+        assert C > 0.0
+        assert np.isclose(C, 0.150762, atol=1e-4)
+
+    def test_capacity_of_entanglement_bell_state(self):
+        """Bell state reduced density matrix is maximally mixed."""
+        # For Bell state, reduced rho = 0.5 * I
+        # Same as maximally mixed: C_E = 0
+        rho = 0.5 * np.eye(2)
+        C = capacity_of_entanglement(rho)
+        assert np.isclose(C, 0.0, atol=1e-10)
 
 
 class TestCorrelationAnalysis:

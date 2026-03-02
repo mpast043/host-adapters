@@ -357,6 +357,48 @@ def entanglement_gap(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float
     return float(spectrum[0] - spectrum[1])
 
 
+def capacity_of_entanglement(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
+    """
+    Compute capacity of entanglement (second cumulant of spectrum).
+
+    C_E = Tr(ρ(ln ρ)²) - [Tr(ρ ln ρ)]² = Var(H_A)
+
+    From de Boer et al. PRD 99, 066012 (2019).
+
+    Parameters
+    ----------
+    rho : np.ndarray
+        Reduced density matrix (Hermitian, positive semidefinite, trace 1)
+    eps : float, optional
+        Cutoff for numerical stability, default 1e-12
+
+    Returns
+    -------
+    float
+        Capacity of entanglement (dimensionless)
+
+    Raises
+    ------
+    ValueError
+        If rho is not a valid density matrix or all eigenvalues are filtered out
+    """
+    _validate_density_matrix(rho)
+
+    # Get valid eigenvalues of the density matrix
+    eigenvalues = _get_valid_eigenvalues(rho, eps)
+
+    # Compute log of eigenvalues
+    log_lam = np.log(eigenvalues)
+
+    # Entropy (first cumulant): S = -sum(λ log λ)
+    S = -np.sum(eigenvalues * log_lam)
+
+    # Capacity (second cumulant): C = sum(λ (log λ)²) - S²
+    C = np.sum(eigenvalues * log_lam**2) - S**2
+
+    return float(C)
+
+
 def capacity_from_entanglement(S: float, normalization: float = 1.0) -> float:
     """
     Convert entanglement entropy to capacity.
