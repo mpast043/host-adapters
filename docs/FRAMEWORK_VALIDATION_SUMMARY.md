@@ -89,6 +89,19 @@ Tier C claims require additional validation infrastructure:
 
 ---
 
+## Physics Grounding Status
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Entanglement utilities | COMPLETE | `experiments/physics/entanglement_utils.py` |
+| Correlation runner | COMPLETE | `experiments/physics/entanglement_capacity_runner.py` |
+| Tests | COMPLETE | 34 tests passing in `tests/test_entanglement_utils.py` |
+| H1 test (C ∝ S) | R² = 1.0 | SUPPORTED (threshold: 0.95) |
+| Derivation | IN PROGRESS | `docs/physics/ENTANGLEMENT_CAPACITY_DERIVATION.md` |
+| MERA integration | COMPLETE | Entanglement output added to exp3_claim3_physical_convergence_runner_v2.py |
+
+---
+
 ## Run History
 
 | Run ID | Date | Status | Notes |
