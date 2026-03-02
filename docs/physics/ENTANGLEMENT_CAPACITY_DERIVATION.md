@@ -445,3 +445,96 @@ The `test_ds_staircase()` function checks for:
 1. Implement real tensor RG extraction from MERA
 2. Compare extracted dimensions with W01 value
 3. Test if staircase appears at critical capacity values
+
+---
+
+## Experimental Comparisons
+
+### Central Charge Measurement (Nature 2026)
+
+From [Köylüoğlu et al. Nature Comm 2026](https://www.nature.com/articles/s41467-025-66775-9):
+
+> First experimental measurement of central charge c with 5% error
+
+**Framework Connection:**
+- Our computed values: c=1 (Heisenberg), c=1/2 (Ising)
+- Can compare to experimental measurements
+- Validates the logarithmic scaling S ∝ c·log(L)
+
+### Entanglement at Quantum Critical Points (2024-2025)
+
+Recent experimental advances provide validation opportunities:
+
+#### 1. Duke University (January 2025)
+
+From [arXiv:2412.18602](https://arxiv.org/html/2412.18602v2):
+
+> MERA circuits on trapped-ion quantum computer measured log-law scaling at criticality
+
+**Key findings:**
+- Observed entanglement gap closing at critical point
+- Verified log-law scaling of entanglement entropy
+- Demonstrated MERA as efficient quantum circuit
+
+**Framework relevance:** Validates MERA approach for capacity extraction
+
+#### 2. Nature Communications (January 2025)
+
+From [Nature Comm 2025](https://www.nature.com/articles/s41467-024-55354-z):
+
+> Entanglement microscopy near quantum critical points
+
+**Key findings:**
+- 2D Ising shows short-range entanglement at criticality
+- Microscopic structure of entanglement revealed
+- Dimensional dependence quantified
+
+**Framework relevance:** d_s staircase may show dimensional transitions
+
+#### 3. Science Advances (February 2025)
+
+From [PMC11804917](https://pmc.ncbi.nlm.nih.gov/articles/PMC11804917/):
+
+> SU(N) deconfined quantum critical points
+
+**Key findings:**
+- Anomalous logarithmic behavior for small N
+- Critical N_c between 7 and 8 where transition changes
+- Entanglement structure varies with symmetry
+
+**Framework relevance:** Capacity may show similar symmetry dependence
+
+### Testable Predictions for Future Experiments
+
+| Prediction | How to Test | Expected Result |
+|------------|-------------|-----------------|
+| C_E/S ratio ≈ universal | Measure C_E and S via tomography | Constant within model class |
+| Gap ratio ≈ 38% | Entanglement spectroscopy at criticality | Near 38% at crossover |
+| d_s staircase | Scaling dimension extraction | Jumps at capacity transitions |
+
+### Cold Atom and Ion Trap Opportunities
+
+**Cold atom arrays:**
+- Prepare 1D/2D/3D critical states
+- Measure Rényi entropies via SWAP protocol
+- Extract capacity of entanglement from spectrum
+
+**Ion trap simulators:**
+- Implement MERA circuits
+- Measure gap closing directly
+- Validate logarithmic scaling
+
+**Quantum materials:**
+- Quantum Fisher information bounds entanglement
+- May provide capacity bounds
+- Connect to experimental observables
+
+---
+
+## References for Experimental Section
+
+1. Köylüoğlu et al., Nature Comm 2026 - Experimental central charge
+2. Duke University, arXiv:2412.18602 (2025) - MERA on quantum computer
+3. Nature Comm 2025 - Entanglement microscopy
+4. Science Advances 2025 - SU(N) critical points
+5. Nature Comm 2024 - Phononic entanglement measurement
