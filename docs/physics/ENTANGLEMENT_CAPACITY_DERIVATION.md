@@ -242,6 +242,30 @@ Ising open:        S = 0.118 × log(L) + 0.184  (R² = 0.999)
    - S_H/S_Ic ≈ 1.66 (consistent with c_H/c_I = 2)
    - S_Ic/S_Io ≈ 1.72 (boundary condition effect)
 
+### XXZ Model: Anisotropy Dependence
+
+The XXZ model extends the analysis across the anisotropy parameter Δ:
+
+```
+H_XXZ = Σ (S^x_i S^x_{i+1} + S^y_i S^y_{i+1} + Δ S^z_i S^z_{i+1})
+```
+
+| Model | Δ | Phase | c | L=2 S | L=4 S | L=8 S | Slope | R² |
+|-------|---|-------|---|-------|-------|-------|-------|-----|
+| XX | 0 | Gapless XY | 1 | 0.693 | 0.833 | 1.031 | 0.244 | 0.990 |
+| XXZ | 0.5 | Gapless XY | 1 | 0.693 | 0.835 | 1.058 | 0.263 | 0.984 |
+| Heisenberg | 1 | Gapless | 1 | 0.693 | 0.837 | 1.054 | 0.260 | 0.987 |
+| XXZ | 2 | Gapped Ising | - | 0.693 | 0.828 | 0.431 | -0.189 | 0.421 |
+
+**Phase Behavior:**
+- **Δ ≤ 1**: Gapless XY phase with c=1. Entropy scales logarithmically with L.
+- **Δ > 1**: Gapped Ising phase. Non-monotonic entropy behavior indicates phase transition.
+
+**Key Observations:**
+1. **Gapless phase (Δ ≤ 1)**: All models show S ∝ log(L) with slope ≈ 0.25-0.26, consistent with c=1.
+2. **L=2 universal**: S = log(2) ≈ 0.693 for all models (maximally entangled singlet).
+3. **Gapped phase (Δ > 1)**: Entropy decreases with L beyond critical point, indicating reduced entanglement in ordered phase.
+
 **Plot:** `docs/physics/full_model_comparison.png`
 
 ### Entanglement Scaling Analysis

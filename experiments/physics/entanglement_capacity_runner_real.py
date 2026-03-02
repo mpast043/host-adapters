@@ -39,7 +39,7 @@ __version__ = "1.0.0"
 R_SQUARED_THRESHOLD = 0.95
 
 # Valid model types
-VALID_MODELS = ["ising_open", "ising_cyclic", "heisenberg_open", "heisenberg_cyclic"]
+VALID_MODELS = ["ising_open", "ising_cyclic", "heisenberg_open", "heisenberg_cyclic", "xxz_open", "xxz_cyclic"]
 
 
 def run_id() -> str:
@@ -90,6 +90,7 @@ def optimize_mera_for_entanglement(
     seed: int = 42,
     j: float = 1.0,
     h: float = 1.0,
+    delta: float = 0.5,
 ) -> Dict[str, Any]:
     """
     Optimize MERA and compute entanglement entropy.
@@ -101,7 +102,7 @@ def optimize_mera_for_entanglement(
     chi : int
         Bond dimension
     model : str
-        Model type (ising_open, ising_cyclic, heisenberg_open, heisenberg_cyclic)
+        Model type (ising_open, ising_cyclic, heisenberg_open, heisenberg_cyclic, xxz_open, xxz_cyclic)
     steps : int
         Number of optimization steps
     seed : int
@@ -110,6 +111,8 @@ def optimize_mera_for_entanglement(
         Coupling constant (Ising)
     h : float
         Field strength (Ising)
+    delta : float
+        Anisotropy parameter (XXZ). Delta=1 gives Heisenberg, Delta=0 gives XX model.
 
     Returns
     -------
@@ -148,6 +151,27 @@ def optimize_mera_for_entanglement(
         H2 = qu.ham_heis(2).real
 
         pairs = [(i, (i + 1) % L) for i in range(L - 1)]
+        if cyclic:
+            pairs.append((L - 1, 0))
+
+        terms = {pair: H2 for pair in pairs}
+    elif model in ["xxz_open", "xxz_cyclic"]:
+        cyclic = model == "xxz_cyclic"
+
+        # XXZ Hamiltonian: H = -J Σ (S^x_i S^x_{i+1} + S^y_i S^y_{i+1} + Δ S^z_i S^z_{i+1})
+        # For spin-1/2: S^α = σ^α/2
+        # quimb convention: ham_heis(2) = S·S = (1/4)(σ^x⊗σ^x + σ^y⊗σ^y + σ^z⊗σ^z)
+        # So we match this: H = S^x⊗S^x + S^y⊗S^y + Δ*S^z⊗S^z
+        # For Δ=1, this matches quimb's ham_heis(2)
+        sx = np.array([[0, 1], [1, 0]], dtype=np.float64) / 2
+        sy = np.array([[0, -1j], [1j, 0]], dtype=np.complex128) / 2
+        sz = np.array([[1, 0], [0, -1]], dtype=np.float64) / 2
+
+        # Two-site Hamiltonian: S^x⊗S^x + S^y⊗S^y + Δ*S^z⊗S^z
+        # This matches quimb.ham_heis(2) convention for Δ=1
+        H2 = (np.kron(sx, sx) + np.kron(sy, sy) + delta * np.kron(sz, sz)).real
+
+        pairs = [(i, i + 1) for i in range(L - 1)]
         if cyclic:
             pairs.append((L - 1, 0))
 
@@ -255,6 +279,7 @@ def run_real_mera_correlation_test(
     steps: int,
     output_dir: str,
     seed: int,
+    delta: float = 0.5,
 ) -> Dict[str, Any]:
     """
     Run real MERA simulations to test capacity-entanglement correlation.
@@ -263,6 +288,8 @@ def run_real_mera_correlation_test(
     """
     print(f"[H1] Running REAL MERA capacity-entanglement correlation test")
     print(f"     Model: {model}, System size: {L}")
+    if "xxz" in model:
+        print(f"     Anisotropy Δ: {delta}")
     print(f"     Bond dimensions: {chi_values}")
     print(f"     Optimization steps: {steps}")
     print()
@@ -283,6 +310,7 @@ def run_real_mera_correlation_test(
                 model=model,
                 steps=steps,
                 seed=sim_seed,
+                delta=delta,
             )
             results.append(result)
             capacities.append(result["capacity"])
@@ -308,6 +336,7 @@ def run_real_mera_correlation_test(
                     "L": L,
                     "steps": steps,
                     "seed": seed,
+                    "delta": delta,
                 },
             },
             "measurements": results,
@@ -347,6 +376,7 @@ def run_real_mera_correlation_test(
                 "L": L,
                 "steps": steps,
                 "seed": seed,
+                "delta": delta,
             },
         },
         "measurements": results,
@@ -410,6 +440,12 @@ def main():
         default=42,
         help="Random seed",
     )
+    parser.add_argument(
+        "--delta",
+        type=float,
+        default=0.5,
+        help="Anisotropy parameter for XXZ model (default: 0.5). Delta=1 gives Heisenberg, Delta=0 gives XX model.",
+    )
 
     args = parser.parse_args()
     chi_values = [int(x.strip()) for x in args.chi.split(",")]
@@ -421,6 +457,7 @@ def main():
         steps=args.steps,
         output_dir=args.output,
         seed=args.seed,
+        delta=args.delta,
     )
 
 
