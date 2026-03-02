@@ -384,3 +384,64 @@ The entanglement gap decreases with increasing χ, indicating spectral flattenin
 - **Evenbly, G. & Vidal, G. (2011)** - "Tensor Network States and Geometry"
 - **Huang, E. et al. (2019)** - "Quantum Criticality and Entanglement in the Kitaev Chain"
 - **Laflorencie, N. (2016)** - "Quantum Entanglement in Condensed Matter Systems"
+
+---
+
+## d_s Staircase Validation
+
+### Framework Claim
+
+The dimension d_s exhibits a **step-like near-integer staircase** with transitions at critical capacity values (Framework with selection.pdf, Section 11.3).
+
+**Framework value:** d_s = 1.336 ± 0.029 (W01 truth claim)
+
+### Physical Interpretation
+
+From the literature:
+
+- **[Lyu et al. PRR 2021](https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.3.023048)**: Scaling dimensions can be extracted from tensor RG without CFT
+- **[Argüello Luengo arXiv:2212.06740](https://arxiv.org/pdf/2212.06740)**: Generalized MERA improves higher scaling dimension accuracy
+- **[Ebel et al. PRX 2025](https://arxiv.org/abs/2408.10312)**: Newton method achieves 10⁻⁹ accuracy for fixed-point tensors
+
+### Test Methodology
+
+1. Run MERA for Heisenberg (c=1) and Ising (c=1/2) models
+2. Extract scaling dimensions from ascending superoperator
+3. Check for staircase structure in extracted d_s values
+4. Compare with W01 truth value: d_s = 1.336 ± 0.029
+
+### Known CFT Scaling Dimensions
+
+| Model | Central Charge c | Primary Field Dimensions |
+|-------|------------------|-------------------------|
+| Ising | 1/2 | 0 (identity), 0.125 (σ), 1.0 (ε) |
+| Heisenberg | 1 | 0 (identity), 0.5, 1.0, 1.5, ... |
+| XXZ Δ≤1 | 1 | Similar to Heisenberg (gapless) |
+| XXZ Δ>1 | - | Gapped, non-universal |
+
+### Framework Interpretation
+
+The Framework's d_s = 1.336 may represent:
+1. An **effective dimension** averaged over multiple scaling operators
+2. A **specific operator's dimension** in the entanglement spectrum
+3. A **crossover value** between different scaling regimes
+
+### Test Results
+
+| Model | Known d_s (CFT) | Framework d_s | Status |
+|-------|-----------------|---------------|--------|
+| Ising | 0.125 (σ), 1.0 (ε) | ~1.336? | Testing |
+| Heisenberg | 0.5, 1.0, 1.5... | ~1.336? | Testing |
+
+### Staircase Detection
+
+The `test_ds_staircase()` function checks for:
+- **Near-integer values**: d_s within 0.15 of an integer
+- **Discrete jumps**: d_s differences > 0.3
+- **Plateau regions**: d_s differences < 0.1
+
+### Next Steps
+
+1. Implement real tensor RG extraction from MERA
+2. Compare extracted dimensions with W01 value
+3. Test if staircase appears at critical capacity values
