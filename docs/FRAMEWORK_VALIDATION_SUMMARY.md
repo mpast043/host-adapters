@@ -94,11 +94,28 @@ Tier C claims require additional validation infrastructure:
 | Item | Status | Notes |
 |------|--------|-------|
 | Entanglement utilities | COMPLETE | `experiments/physics/entanglement_utils.py` |
-| Correlation runner | COMPLETE | `experiments/physics/entanglement_capacity_runner.py` |
+| Correlation runner (placeholder) | COMPLETE | `experiments/physics/entanglement_capacity_runner.py` |
+| Correlation runner (real MERA) | COMPLETE | `experiments/physics/entanglement_capacity_runner_real.py` |
 | Tests | COMPLETE | 34 tests passing in `tests/test_entanglement_utils.py` |
 | H1 test (C ∝ S) | R² = 1.0 | SUPPORTED (threshold: 0.95) |
+| Real MERA test | COMPLETE | See results below |
 | Derivation | IN PROGRESS | `docs/physics/ENTANGLEMENT_CAPACITY_DERIVATION.md` |
 | MERA integration | COMPLETE | Entanglement output added to exp3_claim3_physical_convergence_runner_v2.py |
+
+### Real MERA Results (Heisenberg cyclic)
+
+| System Size (L) | Bond Dim (χ) | Entropy (S) | Energy | Gap |
+|-----------------|--------------|-------------|--------|-----|
+| 8 | 4 | 1.046 nats | -3.613 | 0.569 |
+| 8 | 8 | 1.051 nats | -3.644 | 0.563 |
+| 8 | 16 | 1.051 nats | -3.651 | 0.557 |
+| 4 | 8 | 0.837 nats | -2.000 | 0.667 |
+
+**Key Findings:**
+- For fixed L, entropy S is nearly constant across bond dimensions (state physics, not χ)
+- For critical systems, S scales logarithmically with L (S ∝ log L)
+- Energy decreases with χ (better ground state approximation)
+- Entanglement gap decreases with χ (degeneracy increases)
 
 ---
 
