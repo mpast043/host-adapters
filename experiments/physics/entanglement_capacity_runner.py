@@ -21,14 +21,29 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import warnings
 
 import numpy as np
 
 from entanglement_utils import (
     analyze_capacity_entanglement_correlation,
-    capacity_from_entanglement,
-    von_neumann_entropy,
 )
+
+
+# Module constants
+__version__ = "1.0.0"
+
+# Threshold for hypothesis testing
+R_SQUARED_THRESHOLD = 0.95
+
+# Simulation parameters
+NOISE_FACTOR = 0.02
+MIN_ENTROPY = 0.1
+CAPACITY_FACTOR = 0.5
+SPECTRUM_SIZE = 8
+
+# Valid model types
+VALID_MODELS = ["ising", "heisenberg", "xxz"]
 
 
 def run_id() -> str:
@@ -50,11 +65,11 @@ def simulate_mera(chi: int, model: str, L: int, seed: Optional[int] = None) -> D
     Parameters
     ----------
     chi : int
-        Bond dimension (maximum Schmidt rank)
+        Bond dimension (maximum Schmidt rank). Must be > 0.
     model : str
-        Model type (e.g., 'ising', 'heisenberg')
+        Model type (e.g., 'ising', 'heisenberg', 'xxz')
     L : int
-        System size (number of sites)
+        System size (number of sites). Must be > 0.
     seed : Optional[int]
         Random seed for reproducibility
 
@@ -68,7 +83,20 @@ def simulate_mera(chi: int, model: str, L: int, seed: Optional[int] = None) -> D
         - entanglement_entropy: Computed entanglement entropy
         - capacity: Computed capacity
         - spectrum: Entanglement spectrum (placeholder)
+
+    Raises
+    ------
+    ValueError
+        If chi <= 0, L <= 0, or model is not a valid model type.
     """
+    # Input validation
+    if chi <= 0:
+        raise ValueError(f"Bond dimension chi must be > 0, got {chi}")
+    if L <= 0:
+        raise ValueError(f"System size L must be > 0, got {L}")
+    if model not in VALID_MODELS:
+        raise ValueError(f"Invalid model '{model}'. Valid models are: {VALID_MODELS}")
+
     if seed is not None:
         np.random.seed(seed)
 
@@ -81,17 +109,17 @@ def simulate_mera(chi: int, model: str, L: int, seed: Optional[int] = None) -> D
     base_entropy = np.log(chi)
 
     # Add some noise to make it more realistic
-    noise = 0.02 * np.random.randn()
-    entanglement_entropy = max(0.1, base_entropy + noise)
+    noise = NOISE_FACTOR * np.random.randn()
+    entanglement_entropy = max(MIN_ENTROPY, base_entropy + noise)
 
-    # Capacity is proportional to entropy: C = 0.5 * S
+    # Capacity is proportional to entropy: C = CAPACITY_FACTOR * S
     # This tests the hypothesis H1
-    capacity = 0.5 * entanglement_entropy
+    capacity = CAPACITY_FACTOR * entanglement_entropy
 
     # Generate a placeholder entanglement spectrum
     # For a maximally entangled state, spectrum would be uniform
     # For a low-entanglement state, it would be concentrated
-    n_spectrum = min(chi, 8)  # Limit spectrum size for display
+    n_spectrum = min(chi, SPECTRUM_SIZE)  # Limit spectrum size for display
     spectrum = np.exp(-np.arange(n_spectrum) / entanglement_entropy)
     spectrum = spectrum / np.sum(spectrum)  # Normalize
 
@@ -154,7 +182,7 @@ def run_correlation_test(
     """
     Run the capacity-entanglement correlation test.
 
-    Tests hypothesis H1: C ∝ S with R² > 0.95
+    Tests hypothesis H1: C ∝ S with R² > R_SQUARED_THRESHOLD
 
     Parameters
     ----------
@@ -173,7 +201,39 @@ def run_correlation_test(
     -------
     Dict[str, Any]
         Dictionary containing test results
+
+    Raises
+    ------
+    ValueError
+        If chi_values is empty.
     """
+    # Handle empty chi_values list
+    if not chi_values:
+        warnings.warn("chi_values list is empty, no simulations will be run", UserWarning)
+        return {
+            "metadata": {
+                "run_id": run_id(),
+                "timestamp": dt.datetime.now(timezone.utc).isoformat(),
+                "test": "H1_capacity_entanglement_correlation",
+                "version": __version__,
+                "config": {
+                    "chi_values": [],
+                    "model": model,
+                    "L": L,
+                    "seed": seed,
+                },
+            },
+            "measurements": [],
+            "correlation_analysis": {},
+            "hypothesis": {
+                "H1": "C ∝ S",
+                "threshold": R_SQUARED_THRESHOLD,
+                "r_squared": None,
+                "passed": False,
+            },
+            "verdict": "REJECT",
+        }
+
     print(f"[H1] Running capacity-entanglement correlation test")
     print(f"     Model: {model}, System size: {L}")
     print(f"     Bond dimensions: {chi_values}")
@@ -203,9 +263,9 @@ def run_correlation_test(
         capacities, entropies
     )
 
-    # Test hypothesis H1: R² > 0.95
+    # Test hypothesis H1: R² > R_SQUARED_THRESHOLD
     r_squared = correlation_result["r_squared"]
-    passed = r_squared > 0.95
+    passed = r_squared > R_SQUARED_THRESHOLD
 
     # Build the output
     output = {
@@ -213,7 +273,7 @@ def run_correlation_test(
             "run_id": run_id(),
             "timestamp": dt.datetime.now(timezone.utc).isoformat(),
             "test": "H1_capacity_entanglement_correlation",
-            "version": "1.0.0",
+            "version": __version__,
             "config": {
                 "chi_values": chi_values,
                 "model": model,
@@ -232,7 +292,7 @@ def run_correlation_test(
         "correlation_analysis": correlation_result,
         "hypothesis": {
             "H1": "C ∝ S",
-            "threshold": 0.95,
+            "threshold": R_SQUARED_THRESHOLD,
             "r_squared": r_squared,
             "passed": passed,
         },
@@ -247,7 +307,7 @@ def run_correlation_test(
     print(f"     Intercept: {correlation_result['intercept']:.6f}")
     print(f"     R-squared: {r_squared:.6f}")
     print(f"     P-value: {correlation_result['p_value']:.2e}")
-    print(f"     Verdict: {output['verdict']} (threshold: 0.95)")
+    print(f"     Verdict: {output['verdict']} (threshold: {R_SQUARED_THRESHOLD})")
 
     return output
 
@@ -262,36 +322,44 @@ def write_results(results: Dict[str, Any], output_dir: str) -> None:
         Results dictionary to write
     output_dir : str
         Directory to write results to
+
+    Raises
+    ------
+    OSError
+        If there is an error creating the output directory or writing files.
     """
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    try:
+        output_path.mkdir(parents=True, exist_ok=True)
 
-    # Write metadata
-    with open(output_path / "metadata.json", "w") as f:
-        json.dump(results["metadata"], f, indent=2)
+        # Write metadata
+        with open(output_path / "metadata.json", "w") as f:
+            json.dump(results["metadata"], f, indent=2)
 
-    # Write raw measurements
-    with open(output_path / "measurements.json", "w") as f:
-        json.dump(results["measurements"], f, indent=2)
+        # Write raw measurements
+        with open(output_path / "measurements.json", "w") as f:
+            json.dump(results["measurements"], f, indent=2)
 
-    # Write correlation analysis
-    with open(output_path / "correlation.json", "w") as f:
-        json.dump(results["correlation_analysis"], f, indent=2)
+        # Write correlation analysis
+        with open(output_path / "correlation.json", "w") as f:
+            json.dump(results["correlation_analysis"], f, indent=2)
 
-    # Write verdict
-    verdict_data = {
-        "test": "H1",
-        "verdict": results["verdict"],
-        "status": "COMPLETE",
-        "hypothesis": results["hypothesis"],
-        "passed": {"H1_correlation": results["hypothesis"]["passed"]},
-    }
-    with open(output_path / "verdict.json", "w") as f:
-        json.dump(verdict_data, f, indent=2)
+        # Write verdict
+        verdict_data = {
+            "test": "H1",
+            "verdict": results["verdict"],
+            "status": "COMPLETE",
+            "hypothesis": results["hypothesis"],
+            "passed": {"H1_correlation": results["hypothesis"]["passed"]},
+        }
+        with open(output_path / "verdict.json", "w") as f:
+            json.dump(verdict_data, f, indent=2)
 
-    # Write complete results
-    with open(output_path / "results.json", "w") as f:
-        json.dump(results, f, indent=2)
+        # Write complete results
+        with open(output_path / "results.json", "w") as f:
+            json.dump(results, f, indent=2)
+    except OSError as e:
+        raise OSError(f"Failed to write results to {output_dir}: {e}") from e
 
 
 def parse_chi_values(chi_str: str) -> List[int]:
@@ -307,8 +375,26 @@ def parse_chi_values(chi_str: str) -> List[int]:
     -------
     List[int]
         List of parsed chi values
+
+    Raises
+    ------
+    ValueError
+        If the input string is malformed or contains invalid values.
     """
-    return [int(x.strip()) for x in chi_str.split(",")]
+    try:
+        values = [int(x.strip()) for x in chi_str.split(",")]
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid chi values format: '{chi_str}'. "
+            "Expected comma-separated integers (e.g., '2,4,8,16,32')"
+        ) from e
+
+    # Validate that all values are positive
+    for v in values:
+        if v <= 0:
+            raise ValueError(f"Chi value must be > 0, got {v}")
+
+    return values
 
 
 def main():
