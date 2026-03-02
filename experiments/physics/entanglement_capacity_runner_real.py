@@ -29,6 +29,7 @@ from entanglement_utils import (
     entanglement_spectrum,
     entanglement_gap,
     analyze_capacity_entanglement_correlation,
+    capacity_of_entanglement,
 )
 
 
@@ -251,6 +252,9 @@ def optimize_mera_for_entanglement(
     spectrum = entanglement_spectrum(rho)
     gap = entanglement_gap(rho)
 
+    # Compute capacity of entanglement C_E = Var(H_A)
+    capacity_e = capacity_of_entanglement(rho)
+
     # Capacity is hypothesized to be proportional to entanglement entropy
     # For now, we use S as the measure (C = α*S + β)
     # The exact proportionality constant α needs to be determined from theory
@@ -267,6 +271,7 @@ def optimize_mera_for_entanglement(
         "entanglement_spectrum": spectrum.tolist(),
         "energy": float(final_energy),
         "capacity": float(capacity),
+        "capacity_of_entanglement": float(capacity_e),
         "optimization_steps": steps,
         "seed": seed,
     }
