@@ -19,7 +19,103 @@ from scipy import linalg
 from scipy import stats
 
 
-def von_neumann_entropy(rho: np.ndarray, eps: float = 1e-12) -> float:
+# Module-level constants
+NUMERICAL_TOLERANCE = 1e-12
+QUBIT_DIM = 2
+
+
+def _validate_density_matrix(rho: np.ndarray) -> None:
+    """
+    Validate that an array is a valid density matrix.
+
+    A valid density matrix must be:
+    - 2-dimensional and square
+    - Hermitian (rho = rho^dagger)
+    - Trace equal to 1 (within numerical tolerance)
+    - Positive semidefinite (all eigenvalues >= 0)
+
+    Parameters
+    ----------
+    rho : np.ndarray
+        Array to validate as a density matrix
+
+    Raises
+    ------
+    ValueError
+        If any validation check fails, with a descriptive error message
+    """
+    # Check that rho is a numpy array
+    if not isinstance(rho, np.ndarray):
+        raise ValueError(f"Density matrix must be a numpy array, got {type(rho).__name__}")
+
+    # Check that rho is 2-dimensional
+    if rho.ndim != 2:
+        raise ValueError(f"Density matrix must be 2-dimensional, got {rho.ndim} dimensions")
+
+    # Check that rho is square
+    if rho.shape[0] != rho.shape[1]:
+        raise ValueError(f"Density matrix must be square, got shape {rho.shape}")
+
+    # Check Hermiticity: rho should equal its conjugate transpose
+    if not np.allclose(rho, rho.conj().T, atol=NUMERICAL_TOLERANCE):
+        hermitian_diff = np.max(np.abs(rho - rho.conj().T))
+        raise ValueError(
+            f"Density matrix must be Hermitian (equal to its conjugate transpose). "
+            f"Maximum deviation from Hermiticity: {hermitian_diff:.2e}"
+        )
+
+    # Check trace equals 1
+    trace = np.trace(rho)
+    if not np.isclose(trace, 1.0, atol=NUMERICAL_TOLERANCE):
+        raise ValueError(
+            f"Density matrix must have trace equal to 1. Got trace = {trace:.6f}"
+        )
+
+    # Check positive semidefinite: all eigenvalues must be >= 0
+    eigenvalues = linalg.eigvalsh(rho)
+    min_eigenvalue = np.min(eigenvalues)
+    if min_eigenvalue < -NUMERICAL_TOLERANCE:
+        raise ValueError(
+            f"Density matrix must be positive semidefinite. "
+            f"Minimum eigenvalue: {min_eigenvalue:.2e}"
+        )
+
+
+def _get_valid_eigenvalues(rho: np.ndarray, eps: float) -> np.ndarray:
+    """
+    Compute eigenvalues of a density matrix and filter out negligible values.
+
+    Parameters
+    ----------
+    rho : np.ndarray
+        Density matrix (assumed to be validated)
+    eps : float
+        Threshold below which eigenvalues are considered negligible
+
+    Returns
+    -------
+    np.ndarray
+        Array of eigenvalues greater than eps
+
+    Raises
+    ------
+    ValueError
+        If all eigenvalues are filtered out (empty spectrum)
+    """
+    eigenvalues = linalg.eigvalsh(rho)
+    valid_eigenvalues = eigenvalues[eigenvalues > eps]
+
+    if len(valid_eigenvalues) == 0:
+        raise ValueError(
+            f"All eigenvalues are below threshold eps={eps:.2e}. "
+            f"This may indicate a degenerate or invalid density matrix. "
+            f"Eigenvalue range: [{np.min(eigenvalues):.2e}, {np.max(eigenvalues):.2e}]"
+        )
+
+    return valid_eigenvalues
+
+
+def von_neumann_entropy(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
     """
     Compute the von Neumann entropy of a density matrix.
 
@@ -36,12 +132,16 @@ def von_neumann_entropy(rho: np.ndarray, eps: float = 1e-12) -> float:
     -------
     float
         Von Neumann entropy in nats
-    """
-    # Get eigenvalues of the density matrix
-    eigenvalues = linalg.eigvalsh(rho)
 
-    # Filter out eigenvalues below threshold to avoid log(0)
-    eigenvalues = eigenvalues[eigenvalues > eps]
+    Raises
+    ------
+    ValueError
+        If rho is not a valid density matrix or all eigenvalues are filtered out
+    """
+    _validate_density_matrix(rho)
+
+    # Get valid eigenvalues of the density matrix
+    eigenvalues = _get_valid_eigenvalues(rho, eps)
 
     # Compute entropy: S = -sum(λ log λ)
     entropy = -np.sum(eigenvalues * np.log(eigenvalues))
@@ -49,7 +149,7 @@ def von_neumann_entropy(rho: np.ndarray, eps: float = 1e-12) -> float:
     return float(entropy)
 
 
-def renyi_entropy(rho: np.ndarray, alpha: float, eps: float = 1e-12) -> float:
+def renyi_entropy(rho: np.ndarray, alpha: float, eps: float = NUMERICAL_TOLERANCE) -> float:
     """
     Compute the Renyi entropy of a density matrix.
 
@@ -70,16 +170,26 @@ def renyi_entropy(rho: np.ndarray, alpha: float, eps: float = 1e-12) -> float:
     -------
     float
         Renyi entropy in nats
+
+    Raises
+    ------
+    ValueError
+        If rho is not a valid density matrix, alpha <= 0, or all eigenvalues are filtered out
     """
+    # Validate alpha parameter
+    if alpha <= 0:
+        raise ValueError(
+            f"Renyi entropy order alpha must be > 0, got alpha = {alpha}"
+        )
+
+    _validate_density_matrix(rho)
+
     # For alpha = 1, use von Neumann entropy (the limit as alpha -> 1)
     if np.isclose(alpha, 1.0):
         return von_neumann_entropy(rho, eps)
 
-    # Get eigenvalues of the density matrix
-    eigenvalues = linalg.eigvalsh(rho)
-
-    # Filter out eigenvalues below threshold
-    eigenvalues = eigenvalues[eigenvalues > eps]
+    # Get valid eigenvalues of the density matrix
+    eigenvalues = _get_valid_eigenvalues(rho, eps)
 
     # Compute Tr(ρ^α)
     trace_rho_alpha = np.sum(np.power(eigenvalues, alpha))
@@ -109,10 +219,49 @@ def reduced_density_matrix(psi: np.ndarray, subsystem_A: List[int], total_sites:
     -------
     np.ndarray
         Reduced density matrix for subsystem A
+
+    Raises
+    ------
+    ValueError
+        If psi dimensions don't match total_sites or subsystem_A indices are out of range
     """
+    # Validate total_sites
+    if total_sites <= 0:
+        raise ValueError(f"total_sites must be positive, got {total_sites}")
+
+    # Validate psi length matches 2^total_sites
+    expected_length = QUBIT_DIM ** total_sites
+    if len(psi) != expected_length:
+        raise ValueError(
+            f"Wavefunction length must be {QUBIT_DIM}^{total_sites} = {expected_length}, "
+            f"got length {len(psi)}"
+        )
+
+    # Validate subsystem_A indices
+    if not subsystem_A:
+        raise ValueError("subsystem_A cannot be empty")
+
+    max_index = max(subsystem_A)
+    min_index = min(subsystem_A)
+
+    if min_index < 0:
+        raise ValueError(
+            f"subsystem_A indices must be non-negative, got minimum index {min_index}"
+        )
+
+    if max_index >= total_sites:
+        raise ValueError(
+            f"subsystem_A indices must be less than total_sites ({total_sites}), "
+            f"got maximum index {max_index}"
+        )
+
+    # Check for duplicate indices
+    if len(subsystem_A) != len(set(subsystem_A)):
+        raise ValueError("subsystem_A contains duplicate indices")
+
     # Reshape wavefunction into tensor form
-    # Shape: (2, 2, ..., 2) with total_sites dimensions
-    psi_tensor = psi.reshape([2] * total_sites)
+    # Shape: (QUBIT_DIM, QUBIT_DIM, ..., QUBIT_DIM) with total_sites dimensions
+    psi_tensor = psi.reshape([QUBIT_DIM] * total_sites)
 
     # Determine subsystem B (complement of A)
     all_sites = set(range(total_sites))
@@ -123,8 +272,8 @@ def reduced_density_matrix(psi: np.ndarray, subsystem_A: List[int], total_sites:
     n_B = len(subsystem_B)
 
     # Dimension of each subsystem
-    dim_A = 2 ** n_A
-    dim_B = 2 ** n_B
+    dim_A = QUBIT_DIM ** n_A
+    dim_B = QUBIT_DIM ** n_B
 
     # Rearrange axes: first A indices, then B indices
     # This groups all A sites together and all B sites together
@@ -143,7 +292,7 @@ def reduced_density_matrix(psi: np.ndarray, subsystem_A: List[int], total_sites:
     return rho_A
 
 
-def entanglement_spectrum(rho: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+def entanglement_spectrum(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> np.ndarray:
     """
     Compute the entanglement spectrum (eigenvalues of reduced density matrix).
 
@@ -158,12 +307,16 @@ def entanglement_spectrum(rho: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     -------
     np.ndarray
         Eigenvalues sorted in descending order
-    """
-    # Get eigenvalues
-    eigenvalues = linalg.eigvalsh(rho)
 
-    # Filter out eigenvalues below threshold
-    eigenvalues = eigenvalues[eigenvalues > eps]
+    Raises
+    ------
+    ValueError
+        If rho is not a valid density matrix or all eigenvalues are filtered out
+    """
+    _validate_density_matrix(rho)
+
+    # Get valid eigenvalues
+    eigenvalues = _get_valid_eigenvalues(rho, eps)
 
     # Sort in descending order
     eigenvalues_sorted = np.sort(eigenvalues)[::-1]
@@ -171,7 +324,7 @@ def entanglement_spectrum(rho: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     return eigenvalues_sorted
 
 
-def entanglement_gap(rho: np.ndarray, eps: float = 1e-12) -> float:
+def entanglement_gap(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
     """
     Compute the entanglement gap.
 
@@ -189,6 +342,11 @@ def entanglement_gap(rho: np.ndarray, eps: float = 1e-12) -> float:
     -------
     float
         Entanglement gap: λ_0 - λ_1
+
+    Raises
+    ------
+    ValueError
+        If rho is not a valid density matrix or all eigenvalues are filtered out
     """
     spectrum = entanglement_spectrum(rho, eps)
 
@@ -249,7 +407,25 @@ def analyze_capacity_entanglement_correlation(
         - std_err: Standard error of the slope
         - n_points: Number of data points
         - correlation: Pearson correlation coefficient
+
+    Raises
+    ------
+    ValueError
+        If lists are empty or have different lengths
     """
+    # Validate inputs
+    if not capacities:
+        raise ValueError("capacities list cannot be empty")
+
+    if not entropies:
+        raise ValueError("entropies list cannot be empty")
+
+    if len(capacities) != len(entropies):
+        raise ValueError(
+            f"capacities and entropies must have the same length. "
+            f"Got {len(capacities)} capacities and {len(entropies)} entropies"
+        )
+
     # Convert to numpy arrays
     capacities = np.array(capacities)
     entropies = np.array(entropies)
