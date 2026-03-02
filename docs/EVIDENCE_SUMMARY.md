@@ -51,6 +51,25 @@
 
 ---
 
+## Step 3 Selection Gates
+
+**Run ID:** RUN_20260301_222655
+**Status:** PASS
+
+| Gate | Threshold | Actual | Status |
+|------|-----------|--------|--------|
+| selection_truth | ≥ 0.95 | 1.00 | PASS |
+| selection_danger_gap | = 0 | 0 | PASS |
+| selection_coverage | = 1.0 | 1.0 | PASS |
+| selection_confidence | ≥ 0.90 | 1.0 | PASS |
+
+**Output Files:**
+- `RUN_20260301_222655/results/step3/ledger.jsonl`
+- `RUN_20260301_222655/results/step3/step3_metrics.json`
+- `RUN_20260301_222655/results/step3/step3_verdict.json`
+
+---
+
 ## W03 Controls Fix (2026-03-01)
 
 ### Problem
@@ -112,8 +131,10 @@ Commit: `25624cf Fix W03 control thresholds for positive/negative controls`
 
 1. ✅ W03 controls fixed and verified
 2. ✅ Selection workflow re-run complete
-3. ⏳ W02 Heisenberg leverage extension (optional)
-4. ⏳ Sync Clawdbot documentation
+3. ✅ Step 3 truth infrastructure integrated
+4. ✅ Step 3 verification PASS (20/20 claims)
+5. ⏳ W02 Heisenberg leverage extension (optional)
+6. ⏳ Prepare Tier C claim infrastructure
 
 ---
 
