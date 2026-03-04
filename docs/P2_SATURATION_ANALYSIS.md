@@ -89,6 +89,39 @@ P3 (Gluing Stability) was found to have a **methodological flaw**: it tests naiv
 
 ---
 
+## Literature Support
+
+### Key References (from existing research notes)
+
+| Paper | Key Finding | Relevance |
+|-------|-------------|-----------|
+| de Boer et al. (PRD 2019) | Capacity = Var(H_A), not S | Framework mapping |
+| Lyu et al. (PRR 2021) | Tensor RG extracts d_s | Method for staircase |
+| Wald et al. (PRR 2020) | Gap closes as π²/ln(L) at criticality | Explains ΔAIC behavior |
+
+### Physical Explanation
+
+**Why Heisenberg doesn't saturate:**
+
+| Model | c | Gap | Entanglement | Capacity Bound? |
+|-------|---|-----|--------------|-----------------|
+| Ising | 1/2 | Gapped | Bounded | YES |
+| Heisenberg | 1 | Gapless | log(L) growth | NO |
+
+**Literature confirms:** Heisenberg is a 1D quantum critical system with logarithmically growing entanglement entropy. The capacity framework applies to gapped systems with bounded entanglement.
+
+### Prior Experimental Evidence
+
+From `docs/RESULTS_REFERENCE.md`:
+
+| Prior Result | Our Confirmation |
+|--------------|-------------------|
+| Heisenberg fidelity ~0.68 | Confirmed different behavior |
+| Cyclic ΔAIC +0.66 vs open -10.83 | Confirmed Ising cyclic: +0.66 |
+| Log-linear preferred for all | Confirmed (ΔAIC negative for Heisenberg) |
+
+---
+
 ## References
 
 - Run ID: `RUN_20260304_1243`
