@@ -1,0 +1,10 @@
+Python 3.14.3
+numpy==2.4.2
+scipy==1.17.1
+
+# Run Metadata
+RUN_DIR=outputs/framework_run_20260225_054200
+SEED=42
+CLAIM=3-v3
+VERDICT=SUPPORTED
+DATE=2026-02-25T05:42:58Z

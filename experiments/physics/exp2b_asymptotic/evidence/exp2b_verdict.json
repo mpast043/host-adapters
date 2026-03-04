@@ -1,0 +1,12 @@
+{
+  "experiment": "exp2b_asymptotic",
+  "verdict": "SUPPORTED",
+  "checks": {
+    "savings_preserved_at_scale": true,
+    "entanglement_scaling_preserved": true
+  },
+  "slope": 0.15458914256997208,
+  "savings_n16": 9.466037641737394,
+  "savings_n128": 11.742717285639591,
+  "seed": 42
+}

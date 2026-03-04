@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim-003",
+  "claim_title": "MERA Spectral Dimension Bridge",
+  "verdict": "NOT_SUPPORTED",
+  "falsifier_3_1_passed": false,
+  "falsifier_3_2_passed": false,
+  "correlation": -0.5901480650773464,
+  "sample_count": 7,
+  "seed": 42
+}
