@@ -1,0 +1,140 @@
+{
+  "generated_at": "2026-03-04T22:20:19.130260Z",
+  "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs",
+  "runs": [
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/entanglement_capacity_test",
+      "summary": {
+        "test": "H1_capacity_entanglement_correlation",
+        "version": "1.0.0",
+        "timestamp": "2026-03-02T01:56:50.087169+00:00",
+        "run_id": "20260302T015650Z_3e33c962",
+        "verdict": "ACCEPT",
+        "status": "COMPLETE",
+        "passed": {
+          "H1_correlation": true
+        },
+        "delta_aic": 0
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/p3_isometric_heisenberg",
+      "summary": {
+        "test": "P3_ISOMETRIC_GLUING",
+        "version": "3.0.0",
+        "timestamp": "2026-03-04T20:26:10.330381",
+        "run_id": "20260304T202610Z_a090d204",
+        "verdict": "REJECT",
+        "status": "COMPLETE",
+        "passed": {
+          "P3.1_gluing_stable": false,
+          "P3.2_excision_valid": true,
+          "P3.3_subadditivity": true,
+          "P3.4_araki_lieb": false
+        },
+        "delta_aic": 0
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/p3_isometric_ising",
+      "summary": {
+        "test": "P3_ISOMETRIC_GLUING",
+        "version": "3.0.0",
+        "timestamp": "2026-03-04T20:25:58.209720",
+        "run_id": "20260304T202558Z_65991e34",
+        "verdict": "REJECT",
+        "status": "COMPLETE",
+        "passed": {
+          "P3.1_gluing_stable": false,
+          "P3.2_excision_valid": true,
+          "P3.3_subadditivity": true,
+          "P3.4_araki_lieb": true
+        },
+        "delta_aic": 0
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/p3_isometric_v4_heisenberg",
+      "summary": {
+        "test": "P3_ISOMETRIC_GLUING",
+        "version": "4.0.0",
+        "timestamp": "2026-03-04T20:28:28.591759+00:00",
+        "run_id": "20260304T202828Z_480be62b",
+        "verdict": "ACCEPT",
+        "status": "COMPLETE",
+        "passed": {
+          "P3.1_isometric_structure": true,
+          "P3.2_excision_valid": true,
+          "P3.3_subadditivity": true,
+          "P3.4_araki_lieb": true
+        },
+        "delta_aic": 0
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/p3_isometric_v4_ising",
+      "summary": {
+        "test": "P3_ISOMETRIC_GLUING",
+        "version": "4.0.0",
+        "timestamp": "2026-03-04T20:28:22.058567+00:00",
+        "run_id": "20260304T202822Z_d8929923",
+        "verdict": "ACCEPT",
+        "status": "COMPLETE",
+        "passed": {
+          "P3.1_isometric_structure": true,
+          "P3.2_excision_valid": true,
+          "P3.3_subadditivity": true,
+          "P3.4_araki_lieb": true
+        },
+        "delta_aic": 0
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/xxz_boundary_benchmark",
+      "summary": {
+        "test": "P2_XXZ_BOUNDARY_LITERATURE",
+        "version": "1.0.0",
+        "timestamp": "2026-03-04T195715Z",
+        "run_id": "literature_8_4fda6028"
+      }
+    },
+    {
+      "run_dir": "/tmp/openclaws/Repos/host-adapters/outputs/xxz_boundary_test",
+      "summary": {
+        "test": "P2_XXZ_BOUNDARY",
+        "version": "1.0.0",
+        "timestamp": "2026-03-04T19:51:56.220513",
+        "run_id": "20260304T195156Z_c60a338a"
+      }
+    }
+  ],
+  "aggregate": {
+    "total_runs": 7,
+    "verdict_counts": {
+      "ACCEPT": 3,
+      "REJECT": 2,
+      "UNKNOWN": 2
+    },
+    "tests_seen": [
+      "H1_capacity_entanglement_correlation",
+      "P2_XXZ_BOUNDARY",
+      "P2_XXZ_BOUNDARY_LITERATURE",
+      "P3_ISOMETRIC_GLUING"
+    ],
+    "latest_run": {
+      "test": "P3_ISOMETRIC_GLUING",
+      "version": "4.0.0",
+      "timestamp": "2026-03-04T20:28:28.591759+00:00",
+      "run_id": "20260304T202828Z_480be62b",
+      "verdict": "ACCEPT",
+      "status": "COMPLETE",
+      "passed": {
+        "P3.1_isometric_structure": true,
+        "P3.2_excision_valid": true,
+        "P3.3_subadditivity": true,
+        "P3.4_araki_lieb": true
+      },
+      "delta_aic": 0
+    }
+  }
+}

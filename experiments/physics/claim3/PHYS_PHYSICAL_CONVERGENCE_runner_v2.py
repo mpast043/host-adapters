@@ -29,12 +29,22 @@ from typing import Dict, List, Tuple, Optional, Any
 
 import numpy as np
 
-from experiments.physics.entanglement_utils import (
-    von_neumann_entropy,
-    reduced_density_matrix,
-    entanglement_spectrum,
-    entanglement_gap,
-)
+# Import entanglement_utils - try relative first, then absolute
+try:
+    from ..entanglement_utils import (
+        von_neumann_entropy,
+        reduced_density_matrix,
+        entanglement_spectrum,
+        entanglement_gap,
+    )
+except ImportError:
+    # For direct module execution, use absolute import
+    from entanglement_utils import (
+        von_neumann_entropy,
+        reduced_density_matrix,
+        entanglement_spectrum,
+        entanglement_gap,
+    )
 
 
 # ============================================================
@@ -74,6 +84,8 @@ class OptimizationResult:
     entropy: float
     final_energy: float
     seed: int
+    converged: bool = True
+    num_steps: Optional[int] = None
 
 
 # ============================================================
@@ -297,6 +309,73 @@ def optimize_mera_for_model(
         final_energy = float(loss_fn(mera, terms))
 
     return mera_opt, final_energy
+
+
+def optimize_mera_for_fidelity(
+    L: int,
+    chi: int,
+    ed_psi: Optional[np.ndarray],
+    model: str,
+    steps: int,
+    seed: int,
+    j: float = 1.0,
+    h: float = 1.0,
+) -> OptimizationResult:
+    """
+    Backwards-compatible API used by P2/P3 runners.
+
+    Historically this function returned an OptimizationResult object with
+    fidelity/entropy/final_energy/converged. Keep that contract while reusing
+    the v2 optimizer implementation.
+    """
+    converged = True
+    try:
+        mera_opt, final_energy = optimize_mera_for_model(
+            L=L,
+            chi=chi,
+            steps=steps,
+            seed=seed,
+            model=model,
+            j=j,
+            h=h,
+            ed_psi=ed_psi,
+        )
+    except Exception:
+        # Preserve legacy behavior for callers that continue on failed restarts.
+        converged = False
+        return OptimizationResult(
+            chi=chi,
+            restart_idx=0,
+            fidelity=0.0,
+            entropy=0.0,
+            final_energy=0.0,
+            seed=seed,
+            converged=False,
+            num_steps=steps,
+        )
+
+    # Entropy is always computed from the optimized MERA state.
+    entropy = compute_entropy_from_mera(mera_opt, L, list(range(L // 2)))
+
+    # Fidelity is only defined when an ED reference is provided.
+    fidelity_value = 0.0
+    if ed_psi is not None:
+        psi_ref = np.asarray(ed_psi, dtype=np.complex128).reshape(-1)
+        psi_ref = psi_ref / np.linalg.norm(psi_ref)
+        psi_mera = mera_opt.to_dense().reshape(-1)
+        psi_mera = psi_mera / np.linalg.norm(psi_mera)
+        fidelity_value = fidelity(psi_mera, psi_ref)
+
+    return OptimizationResult(
+        chi=chi,
+        restart_idx=0,
+        fidelity=float(fidelity_value),
+        entropy=float(entropy),
+        final_energy=float(final_energy),
+        seed=seed,
+        converged=converged,
+        num_steps=steps,
+    )
 
 
 def compute_entropy_from_mera(mera, L: int, A_sites: List[int]) -> float:

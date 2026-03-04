@@ -106,9 +106,15 @@ def fit_loglin(log_chis, y):
 def run_p2_mera(cfg: Dict) -> Dict:
     """
     Run P2 test using real MERA optimization.
-    
+
     For L=8: Use exact diagonalization as ground truth
     For L>8: Use largest chi as reference
+
+    Verdict Rules:
+    - P2.1: Saturating model preferred (ΔAIC < 0)
+    - P2.2: Monotonic entropy increase with chi
+    - P2.3: Fidelity > 0.9 for all chi (when ED available)
+    - P2.4: |ΔAIC| >= 2 (strict) OR |ΔAIC| < 2 with high fidelity (tentative)
     """
     L = cfg["L"]
     A_size = cfg["A_size"]
@@ -176,12 +182,12 @@ def run_p2_mera(cfg: Dict) -> Dict:
     
     # Falsifier checks
     p21 = delta_aic < 0  # Saturating model preferred
-    p22 = all(records[i+1]["entropy"] >= records[i]["entropy"] - 1e-9 
+    p22 = all(records[i+1]["entropy"] >= records[i]["entropy"] - 1e-9
               for i in range(len(records)-1))  # Monotonic
-    
+
     # Enhanced checks
     p23 = all(r["fidelity"] > 0.9 for r in records) if ed_result else None
-    
+
     return {
         "metadata": {
             "run_id": run_id(),

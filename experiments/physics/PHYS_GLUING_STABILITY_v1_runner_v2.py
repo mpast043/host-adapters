@@ -33,7 +33,7 @@ import numpy as np
 
 # Add parent for imports
 sys.path.insert(0, str(Path(__file__).parent))
-from claim3.exp3_claim3_physical_convergence_runner import (
+from claim3.PHYS_PHYSICAL_CONVERGENCE_runner_v2 import (
     exact_diagonalization, optimize_mera_for_fidelity
 )
 
