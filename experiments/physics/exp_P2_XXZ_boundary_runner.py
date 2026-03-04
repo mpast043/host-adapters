@@ -71,39 +71,36 @@ def xxz_hamiltonian(L: int, delta: float, J: float = 1.0, cyclic: bool = True) -
     
     H = np.zeros((2**L, 2**L), dtype=complex)
     
-    for i in range(L):
+    # Build XX + YY terms
+    for i in range(L - 1 if not cyclic else L):
         j = (i + 1) % L if cyclic else i + 1
-        if j >= L:
-            continue
         
-        # Build operator for sites i and j
+        # XX term
+        term = 1.0
         for k in range(L):
-            if k == 0:
-                op_i = X if k == i else (Y if k == i else (Z if k == i else I))
-                op_j = X if k == j else (Y if k == j else (Z if k == j else I))
+            if k == i:
+                term = np.kron(term, X)
+            elif k == j:
+                term = np.kron(term, X)
             else:
-                if k == i:
-                    op_i = np.kron(op_i, X) if k == i else op_i
-                elif k == j:
-                    op_j = np.kron(op_j, X) if k == j else op_j
-                else:
-                    op_i = np.kron(op_i, I)
-                    op_j = np.kron(op_j, I)
+                term = np.kron(term, I)
+        H += 0.5 * J * term
         
-        # Simplified construction
-        for pauli_xy in [(X, X), (Y, Y)]:
-            # Build XX + YY term (coefficient 0.5)
-            term = 1.0
-            for k in range(L):
-                if k == i:
-                    term = np.kron(term, pauli_xy[0])
-                elif k == j:
-                    term = np.kron(term, pauli_xy[1])
-                else:
-                    term = np.kron(term, I)
-            H += 0.5 * J * term
+        # YY term
+        term = 1.0
+        for k in range(L):
+            if k == i:
+                term = np.kron(term, Y)
+            elif k == j:
+                term = np.kron(term, Y)
+            else:
+                term = np.kron(term, I)
+        H += 0.5 * J * term
+    
+    # Build Δ·ZZ terms
+    for i in range(L - 1 if not cyclic else L):
+        j = (i + 1) % L if cyclic else i + 1
         
-        # Δ·ZZ term
         term = 1.0
         for k in range(L):
             if k == i:
