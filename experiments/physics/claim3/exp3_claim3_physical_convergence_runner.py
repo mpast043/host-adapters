@@ -197,8 +197,9 @@ def build_heisenberg_hamiltonian(L: int) -> np.ndarray:
             ops[i] = S1
             ops[i + 1] = S2
             
+            # Fixed: kron all operators, not just ops[2:]
             SdotS = ops[0]
-            for op in ops[2:]:
+            for op in ops[1:]:
                 SdotS = np.kron(SdotS, op)
             
             # For mixed real/complex, promote to complex
