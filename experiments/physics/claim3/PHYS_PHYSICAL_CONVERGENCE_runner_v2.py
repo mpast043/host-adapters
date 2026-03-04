@@ -29,19 +29,11 @@ from typing import Dict, List, Tuple, Optional, Any
 
 import numpy as np
 
-from experiments.physics.entanglement_utils import (
+from ..entanglement_utils import (
     von_neumann_entropy,
     reduced_density_matrix,
     entanglement_spectrum,
     entanglement_gap,
-)
-
-# Backwards compatibility import alias
-from experiments.physics.PHYS_PHYSICAL_CONVERGENCE_runner_v2 import (
-    exact_diagonalization,
-    optimize_mera_for_fidelity,
-    Config,
-    EDResult,
 )
 
 
