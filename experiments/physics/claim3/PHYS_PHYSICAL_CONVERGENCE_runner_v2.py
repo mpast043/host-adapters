@@ -29,7 +29,7 @@ from typing import Dict, List, Tuple, Optional, Any
 
 import numpy as np
 
-from ..entanglement_utils import (
+from experiments.physics.entanglement_utils import (
     von_neumann_entropy,
     reduced_density_matrix,
     entanglement_spectrum,
