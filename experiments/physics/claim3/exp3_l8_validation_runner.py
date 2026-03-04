@@ -97,8 +97,8 @@ def build_heisenberg_hamiltonian_corrected(L: int, J: float = 1.0) -> np.ndarray
 
 def compute_entanglement_entropy(psi: np.ndarray, L: int, A_size: int) -> float:
     """Compute von Neumann entropy."""
-    dim_A = 2 ** A_size
-    dim_B = 2 ** (L - A_size)
+    dim_A = int(2 ** A_size)
+    dim_B = int(2 ** (L - A_size))
     psi_matrix = psi.reshape(dim_A, dim_B)
     U, s, Vh = np.linalg.svd(psi_matrix, full_matrices=False)
     eigvals = s ** 2
