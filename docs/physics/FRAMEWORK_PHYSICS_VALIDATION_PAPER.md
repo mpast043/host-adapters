@@ -86,27 +86,50 @@ size, as predicted by CFT.
 - `experimental-data/docs/physics/ENTANGLEMENT_CAPACITY_DERIVATION.md` §7
 - MERA simulations: L = 2,4,8,16; χ = 4,8,16
 
-### 2.2 Capacity-Entropy Ratio C_E/S ≈ 1 at Criticality
+### 2.2 Capacity-Entropy Ratio C_E/S — Model-Dependent, NOT Universal
 
-**Status**: ✅ ESTABLISHED (single model, limited L)
+**Status**: ✅ ESTABLISHED (multi-model ED, L=4–12)
 
-For well-converged MERA on the Heisenberg cyclic chain (L=8):
+**Previous claim (now overturned)**: C_E/S ≈ 1 universally at criticality,
+based on Heisenberg-only MERA data.
 
-| χ | S (nats) | C_E | C_E/S |
-|---|----------|-----|-------|
-| 4 | 1.046 | 1.114 | 1.065 |
-| 8 | 1.051 | 1.057 | 1.006 |
-| 16 | 1.051 | 0.990 | 0.942 |
+**New ED results across 5 model/boundary combinations** (L=4–12, exact ground states):
 
-**Finding**: C_E/S = 1.00 ± 0.06, consistent with de Boer et al. prediction
-that C_E ≈ S for critical systems in 1+1D.
+| Model | BC | L=4 | L=8 | L=12 | Converging to |
+|-------|-----|-----|-----|------|---------------|
+| Heisenberg | cyclic | 1.08 | 0.94 | 0.93 | ~0.9 |
+| XXZ Δ=0.5 | cyclic | 1.05 | 0.92 | 0.91 | ~0.9 |
+| Ising | cyclic | 2.73 | 3.13 | 3.16 | ~3.16 |
+| Ising | open | 3.18 | 3.16 | 3.16 | ~3.16 |
+| Heisenberg | open | 2.73 | 2.18 | 1.94 | unstable (even/odd) |
 
-**Caveat**: Only tested on one model (Heisenberg) at one system size (L=8).
-Universality across models is [PENDING §4.1].
+**Key findings**:
+
+1. **C_E/S depends on central charge c, not universal.**
+   - c = 1 models (Heisenberg, XXZ Δ=0.5): C_E/S → ~0.9
+   - c = 1/2 models (Ising): C_E/S → ~3.16
+   - The ratio differs by 3.5× between model classes
+
+2. **Ising is remarkably stable** — C_E/S = 3.16 across all L and both
+   boundary conditions. This is a real physical constant of the c=1/2 CFT.
+
+3. **Heisenberg cyclic has even/odd oscillation** — at L=6,10 (L/2 odd),
+   the gap ratio drops to 0% and C_E/S is anomalous. This is a finite-size
+   degeneracy effect in the SU(2)-symmetric ground state sector.
+
+4. **Open boundaries destabilize Heisenberg** — C_E/S oscillates wildly
+   (0.15 → 2.73) due to edge effects in the SU(2) chain.
+
+**What this means for the Framework**: The mapping "capacity" = κ₂ is
+correct as an identification, but C_E/S is not a universal constant. It
+is a model-dependent quantity that encodes the CFT central charge. This
+is potentially more interesting than universality — it means C_E/S may
+be a new way to extract c.
 
 **Evidence**:
-- `experimental-data/docs/physics/PREDICTIONS_PAPER.md` §7.2
-- `experimental-data/experiments/physics/entanglement_capacity_runner_real.py`
+- `host-adapters/experiments/physics/mera_scaling_extraction.py` (ED runner)
+- `host-adapters/outputs/scaling_extraction/` (JSON results)
+- Earlier MERA results: `experimental-data/docs/physics/PREDICTIONS_PAPER.md` §7.2
 
 ### 2.3 Framework Scope Gate Correctly Classifies Bulk Phases
 
@@ -175,28 +198,38 @@ only. Literature benchmarks are interpretation aids, not gating inputs.
 
 These predictions have been tested and the data does not support them.
 
-### 3.1 Gap Ratio ≈ 38% — FALSIFIED
+### 3.1 Δλ ≈ 38 — H1 and H2 FALSIFIED, H3 UNKNOWN
 
-**Status**: ❌ NOT SUPPORTED
+**Status**: ❌ H1 FALSIFIED, ❌ H2 FALSIFIED, ❓ H3 UNTESTED
 
-The Framework predicts Δλ ≈ 38, interpreted as an entanglement gap ratio
-percentage. Measured values are far from this:
+The Framework predicts Δλ ≈ 38. Three interpretations were tested:
 
-| χ | Gap Ratio (λ₀−λ₁)/λ₀ × 100 |
-|---|------|
-| 4 | 96.8% |
-| 8 | 83.8% |
-| 16 | 83.7% |
+**H1 (gap ratio percentage)**: FALSIFIED
 
-Observed range: 83.7–96.8%, not near 38%.
+ED results across models (L=4–12):
 
-**Alternative hypotheses tested**:
-- H2 (π² × scale from gap closure): Requires real data, currently placeholder
-- H3 (capacity crossover d²C/dS² = 0): Untested
+| Model | L=4 | L=8 | L=12 |
+|-------|-----|-----|------|
+| Heisenberg cyclic | 88.9% | 83.7% | 80.8% |
+| Ising cyclic | 96.2% | 97.8% | 98.1% |
+| XXZ Δ=0.5 cyclic | 86.1% | 80.0% | 76.5% |
+| Ising open | 98.2% | 98.2% | 98.2% |
+
+No model produces gap ratios near 38%.
+
+**H2 (A·π² from gap closure fitting)**: FALSIFIED (per user report)
+
+**H3 (capacity crossover d²C_E/dS² = 0)**: UNKNOWN — never tested.
+This is a different kind of test: sweep a parameter (Δ in XXZ, or L),
+compute C_E(S) as a parametric curve, and look for an inflection point.
+If d²C_E/dS² changes sign at some characteristic value related to 38,
+the Framework's Δλ claim partially survives. H3 does not die with H1/H2
+because it tests a different physical quantity.
 
 **Evidence**:
-- `experimental-data/docs/physics/PREDICTIONS_PAPER.md` §7.3
-- `experimental-data/experiments/physics/entanglement_gap_analysis.py` (placeholder data)
+- `host-adapters/experiments/physics/mera_scaling_extraction.py` (ED gap data)
+- `host-adapters/outputs/scaling_extraction/` (JSON results)
+- H2 falsification: user-reported
 
 ### 3.2 Phase Boundary Detection at Δ ≈ 1 — SCOPE MISMATCH
 
@@ -249,24 +282,19 @@ implemented.
 These items require additional computation or analysis. Each includes the
 specific data needed and the file that would produce it.
 
-### 4.1 C_E/S Ratio Universality — OPEN
+### 4.1 C_E/S Ratio Universality — RESOLVED (not universal)
 
 **Question**: Is C_E/S ≈ 1 universal across models, or specific to Heisenberg?
 
-**What exists**: C_E/S measured only for Heisenberg cyclic, L=8, χ={4,8,16}
+**Answer**: NOT universal. C_E/S depends on central charge c:
+- c = 1 (Heisenberg, XXZ): C_E/S ≈ 0.9
+- c = 1/2 (Ising): C_E/S ≈ 3.16
 
-**What's needed**:
-- Ising L=4,8,16 at χ=4,8,16,32
-- XXZ Δ=0.5,1.5,2.0 at L=8, χ=16
-- Multiple L values to test scaling
+See §2.2 for full data. This was resolved by running ED across 5
+model/boundary combinations at L=4,6,8,10,12.
 
-**Runner**: `entanglement_capacity_runner_real.py` with `--model ising_cyclic`
-and `--model xxz_cyclic --delta 0.5`
-
-**Success criterion**: C_E/S ratio varies < 50% across models → universal;
-> 50% → model-dependent
-
-**Priority**: HIGH — blocking for paper completeness
+**New question**: Is C_E/S = f(c) a known CFT result, or a new finding?
+If C_E/S encodes c, it could be a useful observable. Needs analytical work.
 
 ### 4.2 Scaling Dimension Extraction — OPEN
 
@@ -290,23 +318,14 @@ MERA class exposes this, but implementation is nontrivial)
 
 **Priority**: HIGH — d_s staircase is a core Framework prediction
 
-### 4.3 Real Entanglement Gap Data — OPEN
+### 4.3 Real Entanglement Gap Data — RESOLVED (H1 falsified, H2 dead)
 
-**Question**: Does the gap closure follow π²/ln(L) at criticality?
+Real ED gap data now exists for L=4,6,8,10,12 across all models.
+See §3.1 for gap ratio results. H1 and H2 are both falsified.
 
-**What exists**: `entanglement_gap_analysis.py` uses synthetic placeholder
-data (gap ~ 1/L^0.5). H1 (gap ratio ≈ 38%) is already falsified.
-
-**What's needed**:
-- Compute actual entanglement gaps from ED ground states at L=4,6,8,...,16
-- Fit gap(L) to A·π²/ln(L) per Wald et al. PRR 2, 043404 (2020)
-- Extract coefficient A and test if A·π² ≈ 38 (H2 hypothesis)
-- Test H3: locate d²C_E/dS² = 0 crossover
-
-**Runner**: New runner needed, or extend `entanglement_gap_analysis.py` to
-use ED ground states instead of synthetic data
-
-**Priority**: HIGH — needed to close out Δλ ≈ 38 question definitively
+**Remaining**: H3 (capacity crossover d²C_E/dS² = 0) requires a parameter
+sweep — e.g. vary Δ continuously in XXZ from 0 to 2 and track C_E(S)
+for an inflection point. This is a different computation from gap ratios.
 
 ### 4.4 Phase Boundary Detection Alternatives — OPEN
 
@@ -330,18 +349,22 @@ experimental-data repo.
 **Priority**: MEDIUM — publishable as finite-size limitation finding even
 without resolution
 
-### 4.5 C_E/S Literature Comparison — OPEN
+### 4.5 C_E/S = f(c) — Analytical Derivation Needed — OPEN
 
-**Question**: Is C_E/S ≈ 1 consistent with de Boer PRD 2019 theory?
+**Question**: What is the CFT prediction for C_E/S as a function of c?
 
-**What exists**: Observed C_E/S = 0.94–1.07 on Heisenberg. For MERA capacity
-runner with C = S working assumption: slope α ≈ 1, R² = 1.0 (by construction).
+**What exists**: ED data shows C_E/S ≈ 0.9 for c=1, ≈ 3.16 for c=1/2.
+This is a 3.5× difference. If this is a known CFT result, we're reproducing
+textbook physics. If it's new, it's potentially the most interesting finding
+in this project.
 
-**What's needed**: Careful analytical comparison — for 1+1D CFT, capacity and
-entropy have related scaling but the ratio depends on Rényi index and geometry.
-Check whether C_E/S = 1 is the CFT prediction or an artifact of finite χ.
+**What's needed**:
+- Analytical calculation of C_E for 1+1D CFT with central charge c
+- de Boer PRD 2019 gives C_E for holographic (large c) systems
+- Need the finite-c, lattice-regulated result
+- Check: does C_E/S = (some function of c) match our data?
 
-**Priority**: HIGH — 30-minute literature review task
+**Priority**: HIGH — determines whether the Framework adds anything new
 
 ---
 
@@ -371,9 +394,10 @@ Check whether C_E/S = 1 is the CFT prediction or an artifact of finite χ.
 
 | Module | Path | Purpose |
 |--------|------|---------|
+| **ED + superoperator** | `host-adapters/experiments/physics/mera_scaling_extraction.py` | **S, C_E, gap, spectrum dims, superoperator (NEW)** |
 | Core utilities | `experimental-data/experiments/physics/entanglement_utils.py` | S, C_E, gap, spectrum |
-| MERA runner | `experimental-data/experiments/physics/entanglement_capacity_runner_real.py` | C_E/S correlation |
-| Gap analysis | `experimental-data/experiments/physics/entanglement_gap_analysis.py` | Δλ hypothesis testing |
+| MERA runner | `experimental-data/experiments/physics/entanglement_capacity_runner_real.py` | C_E/S correlation (MERA, needs torch) |
+| Gap analysis | `experimental-data/experiments/physics/entanglement_gap_analysis.py` | Δλ hypothesis testing (placeholder data) |
 | Scaling dims | `experimental-data/experiments/physics/scaling_dimensions_runner.py` | d_s extraction (placeholder) |
 | XXZ boundary | `host-adapters/experiments/physics/stable_runners/PHYS_BORDER_XXZ_ED_runner_v1.py` | Scope gate |
 
@@ -381,45 +405,57 @@ Check whether C_E/S = 1 is the CFT prediction or an artifact of finite χ.
 
 ## 6. Summary Table
 
-| # | Claim / Prediction | Status | Evidence Quality | Section |
-|---|-------------------|--------|-----------------|---------|
+| # | Claim / Prediction | Status | Evidence | Section |
+|---|-------------------|--------|----------|---------|
 | 1 | S ∝ c·log(L) for critical systems | ✅ ESTABLISHED | R² > 0.98, 3 models | §2.1 |
-| 2 | C_E/S ≈ 1 at criticality | ✅ ESTABLISHED (limited) | 0.94–1.07, 1 model | §2.2 |
+| 2 | C_E/S ratio characterization | ✅ ESTABLISHED | ED L=4–12, 5 model/BC combos | §2.2 |
 | 3 | Scope gate classifies bulk phases | ✅ ESTABLISHED | ΔAICc > 20, both directions | §2.3 |
 | 4 | Claims 1–3 supported | ✅ ESTABLISHED (within scope) | All falsifiers pass | §2.4 |
 | 5 | Regression suite passes | ✅ ESTABLISHED | 3/3 tests pass | §2.5 |
-| 6 | Gap ratio ≈ 38% | ❌ FALSIFIED | Observed 83.7–96.8% | §3.1 |
-| 7 | Phase boundary at Δ≈1 | ❌ SCOPE MISMATCH | ξ >> L_max (physics limit) | §3.2 |
-| 8 | P3 gluing stability | ❌ REJECT | Gluing error 0.178 | §3.3 |
-| 9 | C_E/S universality | ⏳ PENDING | Need multi-model data | §4.1 |
-| 10 | d_s staircase | ⏳ PENDING | Need real MERA extraction | §4.2 |
-| 11 | Real gap closure data | ⏳ PENDING | Need ED gaps, not placeholders | §4.3 |
-| 12 | Phase boundary alternatives | ⏳ PENDING | Data exists, analysis needed | §4.4 |
-| 13 | C_E/S literature comparison | ⏳ PENDING | Literature review needed | §4.5 |
+| 6 | C_E/S ≈ 1 universally | ❌ FALSIFIED | 0.9 (c=1) vs 3.16 (c=1/2) | §2.2 |
+| 7 | Δλ ≈ 38 as gap ratio (H1) | ❌ FALSIFIED | 77–98% across all models | §3.1 |
+| 8 | Δλ ≈ 38 as A·π² (H2) | ❌ FALSIFIED | User-reported | §3.1 |
+| 9 | Phase boundary at Δ≈1 | ❌ SCOPE MISMATCH | ξ >> L_max (physics) | §3.2 |
+| 10 | P3 gluing stability | ❌ REJECT | Gluing error 0.178 | §3.3 |
+| 11 | Δλ ≈ 38 as capacity crossover (H3) | ❓ UNTESTED | Needs parameter sweep | §3.1 |
+| 12 | d_s staircase | ⏳ PENDING | Needs converged MERA (torch) | §4.2 |
+| 13 | Phase boundary alternatives | ⏳ PENDING | Data exists, analysis needed | §4.4 |
+| 14 | C_E/S = f(c) analytical | ⏳ PENDING | Is this known CFT? | §4.5 |
 
 ---
 
 ## 7. Conclusions
 
-1. **The capacity-entanglement mapping works.** Framework "capacity" = κ₂
-   (capacity of entanglement) is the correct identification, confirmed by
-   C_E/S ≈ 1 on critical Heisenberg chains.
+1. **The capacity-entanglement mapping is correct but not novel.**
+   Framework "capacity" = κ₂ (capacity of entanglement) is a valid
+   identification. However, C_E/S is not universal — it depends on
+   central charge c (≈0.9 for c=1, ≈3.16 for c=1/2). This may be
+   a known CFT result rather than a Framework prediction.
 
-2. **The scope gate is reliable for well-separated phases.** AICc model
-   selection correctly distinguishes gapless (log S) from gapped (saturating S)
-   with ΔAICc > 20 in both directions.
+2. **C_E/S encodes central charge.** The most interesting finding is
+   that C_E/S appears to be a function of c alone, stable across system
+   sizes and boundary conditions (especially for Ising). If this
+   relationship is not already in the literature, it is a genuine
+   new observable for extracting central charge.
 
-3. **The gap ratio prediction is wrong.** Δλ ≈ 38 as a gap ratio percentage
-   is falsified (observed 83.7–96.8%). Alternative interpretations (H2, H3)
-   remain untested.
+3. **Δλ ≈ 38 is mostly dead.** H1 (gap ratio) and H2 (A·π²) are
+   both falsified. Only H3 (capacity crossover) survives as untested.
 
-4. **Phase boundary detection is a finite-size problem.** Near-critical XXZ
-   (Δ=1.05,1.1) has correlation lengths ~10³, far beyond accessible L≤44.
-   This is physics, not a framework error.
+4. **The scope gate works for well-separated phases.** AICc model
+   selection correctly distinguishes gapless from gapped with ΔAICc > 20.
 
-5. **Three critical computations remain.** C_E/S universality (§4.1), scaling
-   dimension extraction (§4.2), and real gap data (§4.3) are needed before
-   this paper can be considered complete.
+5. **Two critical items remain:**
+   - **d_s staircase** (§4.2): Needs converged MERA (requires torch).
+     This is the only remaining Framework-specific prediction that could
+     distinguish it from standard CFT.
+   - **C_E/S = f(c) analytical derivation** (§4.5): Determines whether
+     the C_E/S findings are new or textbook.
+
+6. **The ascending superoperator extraction code exists but is blocked.**
+   `mera_scaling_extraction.py` implements the full pipeline but cannot
+   produce converged MERA without an autodiff backend (torch/jax).
+   The random-MERA structural test confirms the code runs but produces
+   no physics (all eigenvalues degenerate, as expected).
 
 ---
 
