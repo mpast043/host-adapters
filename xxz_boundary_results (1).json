@@ -1,0 +1,568 @@
+{
+  "metadata": {
+    "test": "P2_XXZ_BOUNDARY_ED",
+    "version": "2.0.0",
+    "method": "exact_diagonalization",
+    "validation_mode": "physics_truth_baseline",
+    "framework_correctness_gate": true,
+    "boundary_condition": "OBC",
+    "partition_rule": "half_chain_ell_equals_L_over_2",
+    "log_model": "S(L)=alpha*ln(L)+beta",
+    "sat_model": "S(L)=S_inf-A*exp(-L/xi)",
+    "entropy_units": "bits",
+    "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+    "parity_control": "L_mod_4_eq_0",
+    "log_model_osc": "S(L)=alpha*ln(L)+beta+B*(-1)^(L/2)*exp(-L/lambda)",
+    "sat_model_osc": "S(L)=S_inf-A*exp(-L/xi)+B*(-1)^(L/2)*exp(-L/lambda)",
+    "decision_metric": "delta_aicc_sat_minus_log",
+    "decision_threshold_abs": 2.0,
+    "decision_rule": "delta<=-2:IN_SCOPE; delta>=+2:OUT_OF_SCOPE; otherwise:INCONCLUSIVE",
+    "gate_data_source": "observed_S_L2_L_only",
+    "even_L_only": true,
+    "solver_overlap_required_for_pooling": true,
+    "solver_overlap_strict_mode": "all_must_pass",
+    "pooling_mode": "pool_if_overlap_pass",
+    "oscillation_mode": "off",
+    "oscillation_alt_threshold": 0.75,
+    "oscillation_aicc_improve_min": 2.0
+  },
+  "config": {
+    "deltas": [
+      0.5,
+      2.0
+    ],
+    "L_values": [
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44
+    ],
+    "ed_max_L": 16,
+    "delta_set": "custom",
+    "min_viable_L_points": 8,
+    "pooling_mode": "pool_if_overlap_pass",
+    "dmrg_overlap_json": "outputs/regression_stable_20260305/A_solver_mismatch/dmrg_degraded_mismatch.json",
+    "overlap_L_values": [
+      8,
+      12,
+      16
+    ],
+    "overlap_abs_tol": 0.001,
+    "overlap_rel_tol": 0.001,
+    "oscillation_mode": "off",
+    "oscillation_alt_threshold": 0.75,
+    "oscillation_aicc_improve_min": 2.0,
+    "parity_control": "L_mod_4_eq_0"
+  },
+  "results": [
+    {
+      "delta": 0.5,
+      "expected_scope": "OUT_OF_SCOPE",
+      "measurements": [
+        {
+          "L": 8,
+          "delta": 0.5,
+          "E0": -2.843249026007507,
+          "S_entropy": 0.6970923269073726,
+          "kappa2": 0.9714546821106241,
+          "A_size": 4,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 12,
+          "delta": 0.5,
+          "E0": -4.338148330927074,
+          "S_entropy": 0.8183125811453882,
+          "kappa2": 1.0056553938427213,
+          "A_size": 6,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 16,
+          "delta": 0.5,
+          "E0": -5.835388676280311,
+          "S_entropy": 0.9023259683580208,
+          "kappa2": 1.0230682103760083,
+          "A_size": 8,
+          "ed_solver": "sparse_lanczos"
+        }
+      ],
+      "log_model": {
+        "alpha": 0.2962783470458453,
+        "beta": 0.08131844507928081,
+        "rss": 8.98146126724108e-07,
+        "aic": -41.06463603774034,
+        "aicc": Infinity,
+        "bic": -42.86741146040412,
+        "n": 3,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.232187005494732,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model": {
+        "S_inf": 1.0946342760503285,
+        "A": 0.8148340332285375,
+        "xi": 11.116080414914544,
+        "rss": 1.6656062330595136e-06,
+        "aic": -37.21180105659025,
+        "aicc": Infinity,
+        "bic": -39.91596419058592,
+        "n": 3,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2280,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_base": {
+        "alpha": 0.2962783470458453,
+        "beta": 0.08131844507928081,
+        "rss": 8.98146126724108e-07,
+        "aic": -41.06463603774034,
+        "aicc": Infinity,
+        "bic": -42.86741146040412,
+        "n": 3,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.232187005494732,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model_base": {
+        "S_inf": 1.0946342760503285,
+        "A": 0.8148340332285375,
+        "xi": 11.116080414914544,
+        "rss": 1.6656062330595136e-06,
+        "aic": -37.21180105659025,
+        "aicc": Infinity,
+        "bic": -39.91596419058592,
+        "n": 3,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2280,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_osc": null,
+      "sat_model_osc": null,
+      "fit_variant": "base",
+      "oscillation_diagnostics": {
+        "mode": "off",
+        "alternation_fraction": 1.0,
+        "alternation_threshold": 0.75,
+        "detected": false,
+        "aicc_improve_log": null,
+        "aicc_improve_sat": null,
+        "aicc_improve_threshold": 2.0,
+        "used_for_gating": false
+      },
+      "delta_aic": 3.852834981150096,
+      "delta_aic_sat_minus_log": 3.852834981150096,
+      "delta_aic_log_minus_sat": -3.852834981150096,
+      "delta_aicc_sat_minus_log": NaN,
+      "delta_aicc_log_minus_sat": NaN,
+      "aic_saturating": -37.21180105659025,
+      "aic_loglinear": -41.06463603774034,
+      "aicc_saturating": Infinity,
+      "aicc_loglinear": Infinity,
+      "preferred_model": "tie",
+      "expected_preferred_model": "log-linear",
+      "expected_sign_sat_minus_log": "positive",
+      "actual_sign_sat_minus_log": "positive",
+      "actual_sign_aicc_sat_minus_log": "undefined",
+      "gate_decision": "INCONCLUSIVE",
+      "gate_reason": "SOLVER_MISMATCH",
+      "solver_calibration": {
+        "enabled": true,
+        "delta": 0.5,
+        "required_L_values": [
+          8,
+          12,
+          16
+        ],
+        "abs_tol": 0.001,
+        "rel_tol": 0.001,
+        "strict_all_must_pass": true,
+        "calibration_pass": false,
+        "status": "MISMATCH",
+        "reason": "SOLVER_MISMATCH",
+        "required_points": 3,
+        "checked_points": 3,
+        "passed_points": 0,
+        "failed_points": 3,
+        "missing_points": 0,
+        "error_points": 0,
+        "overlap_points": [
+          {
+            "L": 8,
+            "status": "FAIL",
+            "S_ed": 0.6970923269073726,
+            "S_dmrg": 0.2,
+            "dmrg_status": "OK",
+            "delta_s": 0.49709232690737254,
+            "rel_delta_s": 0.49709232690737254,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          },
+          {
+            "L": 12,
+            "status": "FAIL",
+            "S_ed": 0.8183125811453882,
+            "S_dmrg": 0.21000000000000002,
+            "dmrg_status": "OK",
+            "delta_s": 0.6083125811453882,
+            "rel_delta_s": 0.6083125811453882,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          },
+          {
+            "L": 16,
+            "status": "FAIL",
+            "S_ed": 0.9023259683580208,
+            "S_dmrg": 0.22,
+            "dmrg_status": "OK",
+            "delta_s": 0.6823259683580208,
+            "rel_delta_s": 0.6823259683580208,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          }
+        ]
+      },
+      "model_selection_audit": {
+        "aicc_used_for_gating": false,
+        "aicc_evaluated_for_audit": true,
+        "blocked_by_solver_calibration": true,
+        "blocking_reason": "SOLVER_MISMATCH"
+      },
+      "fit_series": {
+        "source": "ED_ONLY",
+        "pooling_mode": "pool_if_overlap_pass",
+        "pooling_applied": false,
+        "pooling_reason": "SOLVER_MISMATCH",
+        "n_fit_points": 3,
+        "L_values": [
+          8,
+          12,
+          16
+        ],
+        "source_by_L": {
+          "8": "ED",
+          "12": "ED",
+          "16": "ED"
+        },
+        "parity_control": "L_mod_4_eq_0"
+      },
+      "verdict": "INCONCLUSIVE",
+      "scope_correct": null
+    },
+    {
+      "delta": 2.0,
+      "expected_scope": "IN_SCOPE",
+      "measurements": [
+        {
+          "L": 8,
+          "delta": 2.0,
+          "E0": -4.611274141649162,
+          "S_entropy": 0.7592390594394597,
+          "kappa2": 0.8903337929184036,
+          "A_size": 4,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 12,
+          "delta": 2.0,
+          "E0": -7.056954786581861,
+          "S_entropy": 0.9117265669910672,
+          "kappa2": 0.8709861362719811,
+          "A_size": 6,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 16,
+          "delta": 2.0,
+          "E0": -9.510952980506833,
+          "S_entropy": 1.0244282675360283,
+          "kappa2": 0.835012261750423,
+          "A_size": 8,
+          "ed_solver": "sparse_lanczos"
+        }
+      ],
+      "log_model": {
+        "alpha": 0.3821600904199451,
+        "beta": -0.03616352679379343,
+        "rss": 4.595953212785335e-06,
+        "aic": -36.16684000005043,
+        "aicc": Infinity,
+        "bic": -37.969615422714206,
+        "n": 3,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.589359135182712,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model": {
+        "S_inf": 1.3265036797581904,
+        "A": 1.0588151613936387,
+        "xi": 12.799061316459893,
+        "rss": 1.8965705928639976e-06,
+        "aic": -36.82222662741368,
+        "aicc": Infinity,
+        "bic": -39.52638976140935,
+        "n": 3,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2280,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_base": {
+        "alpha": 0.3821600904199451,
+        "beta": -0.03616352679379343,
+        "rss": 4.595953212785335e-06,
+        "aic": -36.16684000005043,
+        "aicc": Infinity,
+        "bic": -37.969615422714206,
+        "n": 3,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.589359135182712,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model_base": {
+        "S_inf": 1.3265036797581904,
+        "A": 1.0588151613936387,
+        "xi": 12.799061316459893,
+        "rss": 1.8965705928639976e-06,
+        "aic": -36.82222662741368,
+        "aicc": Infinity,
+        "bic": -39.52638976140935,
+        "n": 3,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2280,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_osc": null,
+      "sat_model_osc": null,
+      "fit_variant": "base",
+      "oscillation_diagnostics": {
+        "mode": "off",
+        "alternation_fraction": 1.0,
+        "alternation_threshold": 0.75,
+        "detected": false,
+        "aicc_improve_log": null,
+        "aicc_improve_sat": null,
+        "aicc_improve_threshold": 2.0,
+        "used_for_gating": false
+      },
+      "delta_aic": -0.6553866273632494,
+      "delta_aic_sat_minus_log": -0.6553866273632494,
+      "delta_aic_log_minus_sat": 0.6553866273632494,
+      "delta_aicc_sat_minus_log": NaN,
+      "delta_aicc_log_minus_sat": NaN,
+      "aic_saturating": -36.82222662741368,
+      "aic_loglinear": -36.16684000005043,
+      "aicc_saturating": Infinity,
+      "aicc_loglinear": Infinity,
+      "preferred_model": "tie",
+      "expected_preferred_model": "saturating",
+      "expected_sign_sat_minus_log": "negative",
+      "actual_sign_sat_minus_log": "negative",
+      "actual_sign_aicc_sat_minus_log": "undefined",
+      "gate_decision": "INCONCLUSIVE",
+      "gate_reason": "SOLVER_MISMATCH",
+      "solver_calibration": {
+        "enabled": true,
+        "delta": 2.0,
+        "required_L_values": [
+          8,
+          12,
+          16
+        ],
+        "abs_tol": 0.001,
+        "rel_tol": 0.001,
+        "strict_all_must_pass": true,
+        "calibration_pass": false,
+        "status": "MISMATCH",
+        "reason": "SOLVER_MISMATCH",
+        "required_points": 3,
+        "checked_points": 3,
+        "passed_points": 0,
+        "failed_points": 3,
+        "missing_points": 0,
+        "error_points": 0,
+        "overlap_points": [
+          {
+            "L": 8,
+            "status": "FAIL",
+            "S_ed": 0.7592390594394597,
+            "S_dmrg": 0.2,
+            "dmrg_status": "OK",
+            "delta_s": 0.5592390594394596,
+            "rel_delta_s": 0.5592390594394596,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          },
+          {
+            "L": 12,
+            "status": "FAIL",
+            "S_ed": 0.9117265669910672,
+            "S_dmrg": 0.21000000000000002,
+            "dmrg_status": "OK",
+            "delta_s": 0.7017265669910673,
+            "rel_delta_s": 0.7017265669910673,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          },
+          {
+            "L": 16,
+            "status": "FAIL",
+            "S_ed": 1.0244282675360283,
+            "S_dmrg": 0.22,
+            "dmrg_status": "OK",
+            "delta_s": 0.8044282675360284,
+            "rel_delta_s": 0.7852460665409521,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": false,
+            "pass_rel": false
+          }
+        ]
+      },
+      "model_selection_audit": {
+        "aicc_used_for_gating": false,
+        "aicc_evaluated_for_audit": true,
+        "blocked_by_solver_calibration": true,
+        "blocking_reason": "SOLVER_MISMATCH"
+      },
+      "fit_series": {
+        "source": "ED_ONLY",
+        "pooling_mode": "pool_if_overlap_pass",
+        "pooling_applied": false,
+        "pooling_reason": "SOLVER_MISMATCH",
+        "n_fit_points": 3,
+        "L_values": [
+          8,
+          12,
+          16
+        ],
+        "source_by_L": {
+          "8": "ED",
+          "12": "ED",
+          "16": "ED"
+        },
+        "parity_control": "L_mod_4_eq_0"
+      },
+      "verdict": "INCONCLUSIVE",
+      "scope_correct": null
+    }
+  ],
+  "summary": {
+    "scope_matches": 0,
+    "conclusive_total": 0,
+    "inconclusive_total": 2,
+    "total": 2,
+    "all_correct": false,
+    "gate_reason_counts": {
+      "SOLVER_MISMATCH": 2
+    },
+    "overall_verdict": "SCOPE_INCONCLUSIVE"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "artifact": "SCOPE_RULE_CANONICAL",
+  "version": "1.0.0",
+  "authoritative_gate": {
+    "runner": "experiments/physics/PHYS_BORDER_XXZ_ED_runner_v1.py",
+    "boundary_condition": "OBC",
+    "partition_rule": "ell=L/2",
+    "gating_data": "observed_S(L/2,L)_only",
+    "metric": "delta_aicc_sat_minus_log",
+    "metric_definition": "AICc_sat - AICc_log",
+    "models": {
+      "critical": "S(L)=alpha*ln(L)+beta",
+      "gapped": "S(L)=S_inf-A*exp(-L/xi)",
+      "oscillation_corrected_optional": {
+        "critical": "S(L)=alpha*ln(L)+beta+B*(-1)^(L/2)*exp(-L/lambda)",
+        "gapped": "S(L)=S_inf-A*exp(-L/xi)+B*(-1)^(L/2)*exp(-L/lambda)"
+      }
+    }
+  },
+  "allowed_grids": {
+    "default": {
+      "name": "parity_controlled",
+      "rule": "L_mod_4_eq_0",
+      "example": [8, 12, 16, 20, 24, 28, 32, 36, 40, 44]
+    },
+    "alternate": {
+      "name": "even_only",
+      "rule": "L_mod_2_eq_0",
+      "requirements": [
+        "finite_size_diagnostics_required"
+      ]
+    }
+  },
+  "decision_bands": {
+    "in_scope": "delta_aicc_sat_minus_log <= -2",
+    "out_of_scope": "delta_aicc_sat_minus_log >= +2",
+    "inconclusive": "abs(delta_aicc_sat_minus_log) < 2"
+  },
+  "solver_calibration": {
+    "required_for_pooling": true,
+    "strict_policy": "all_overlap_points_must_pass",
+    "failure_behaviors": {
+      "SOLVER_MISMATCH": "INCONCLUSIVE",
+      "SOLVER_OVERLAP_MISSING": "INCONCLUSIVE",
+      "SOLVER_INPUT_ERROR": "INCONCLUSIVE"
+    },
+    "on_failure": {
+      "aicc_used_for_gating": false,
+      "aicc_may_be_reported_for_audit": true
+    }
+  },
+  "proxy_policy": {
+    "proxies_are_regression_only": true,
+    "override_authoritative_gate": false,
+    "runners": {
+      "experiments/physics/PHYS_BORDER_XXZ_BENCHMARK_runner_v1.py": "theory_baseline_only",
+      "experiments/physics/PHYS_BORDER_XXZ_runner_v1.py": "integration_regression_only"
+    }
+  }
+}

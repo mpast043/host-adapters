@@ -1,0 +1,597 @@
+{
+  "metadata": {
+    "test": "P2_XXZ_BOUNDARY_ED",
+    "version": "2.0.0",
+    "method": "exact_diagonalization",
+    "validation_mode": "physics_truth_baseline",
+    "framework_correctness_gate": true,
+    "boundary_condition": "OBC",
+    "partition_rule": "half_chain_ell_equals_L_over_2",
+    "log_model": "S(L)=alpha*ln(L)+beta",
+    "sat_model": "S(L)=S_inf-A*exp(-L/xi)",
+    "entropy_units": "bits",
+    "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+    "parity_control": "L_mod_4_eq_0",
+    "log_model_osc": "S(L)=alpha*ln(L)+beta+B*(-1)^(L/2)*exp(-L/lambda)",
+    "sat_model_osc": "S(L)=S_inf-A*exp(-L/xi)+B*(-1)^(L/2)*exp(-L/lambda)",
+    "decision_metric": "delta_aicc_sat_minus_log",
+    "decision_threshold_abs": 2.0,
+    "decision_rule": "delta<=-2:IN_SCOPE; delta>=+2:OUT_OF_SCOPE; otherwise:INCONCLUSIVE",
+    "gate_data_source": "observed_S_L2_L_only",
+    "even_L_only": true,
+    "solver_overlap_required_for_pooling": true,
+    "solver_overlap_strict_mode": "all_must_pass",
+    "pooling_mode": "pool_if_overlap_pass",
+    "oscillation_mode": "off",
+    "oscillation_alt_threshold": 0.75,
+    "oscillation_aicc_improve_min": 2.0
+  },
+  "config": {
+    "deltas": [
+      0.5,
+      2.0
+    ],
+    "L_values": [
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44
+    ],
+    "ed_max_L": 16,
+    "delta_set": "custom",
+    "min_viable_L_points": 8,
+    "pooling_mode": "pool_if_overlap_pass",
+    "dmrg_overlap_json": "outputs/dmrg_overlap_high_accuracy_L4k_bulk.json",
+    "overlap_L_values": [
+      8,
+      12,
+      16
+    ],
+    "overlap_abs_tol": 0.001,
+    "overlap_rel_tol": 0.001,
+    "oscillation_mode": "off",
+    "oscillation_alt_threshold": 0.75,
+    "oscillation_aicc_improve_min": 2.0,
+    "parity_control": "L_mod_4_eq_0"
+  },
+  "results": [
+    {
+      "delta": 0.5,
+      "expected_scope": "OUT_OF_SCOPE",
+      "measurements": [
+        {
+          "L": 8,
+          "delta": 0.5,
+          "E0": -2.8432490260075065,
+          "S_entropy": 0.6970923269075024,
+          "kappa2": 0.9714546821104953,
+          "A_size": 4,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 12,
+          "delta": 0.5,
+          "E0": -4.338148330927078,
+          "S_entropy": 0.8183125810806234,
+          "kappa2": 1.0056553938435777,
+          "A_size": 6,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 16,
+          "delta": 0.5,
+          "E0": -5.835388676280299,
+          "S_entropy": 0.9023259696738846,
+          "kappa2": 1.0230682105392632,
+          "A_size": 8,
+          "ed_solver": "sparse_lanczos"
+        }
+      ],
+      "log_model": {
+        "alpha": 0.28447941292718915,
+        "beta": 0.11068280375815245,
+        "rss": 7.813200739959339e-05,
+        "aic": -113.59695852209289,
+        "aicc": -111.88267280780718,
+        "bic": -112.9917883361048,
+        "n": 10,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.1831166179869776,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model": {
+        "S_inf": 1.2744414545360587,
+        "A": 0.852720342281019,
+        "xi": 19.836751257197065,
+        "rss": 0.0003811070653926021,
+        "aic": -95.75015303778824,
+        "aicc": -91.75015303778824,
+        "bic": -94.8423977588061,
+        "n": 10,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2320,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_base": {
+        "alpha": 0.28447941292718915,
+        "beta": 0.11068280375815245,
+        "rss": 7.813200739959339e-05,
+        "aic": -113.59695852209289,
+        "aicc": -111.88267280780718,
+        "bic": -112.9917883361048,
+        "n": 10,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.1831166179869776,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model_base": {
+        "S_inf": 1.2744414545360587,
+        "A": 0.852720342281019,
+        "xi": 19.836751257197065,
+        "rss": 0.0003811070653926021,
+        "aic": -95.75015303778824,
+        "aicc": -91.75015303778824,
+        "bic": -94.8423977588061,
+        "n": 10,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2320,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_osc": null,
+      "sat_model_osc": null,
+      "fit_variant": "base",
+      "oscillation_diagnostics": {
+        "mode": "off",
+        "alternation_fraction": 0.2222222222222222,
+        "alternation_threshold": 0.75,
+        "detected": false,
+        "aicc_improve_log": null,
+        "aicc_improve_sat": null,
+        "aicc_improve_threshold": 2.0,
+        "used_for_gating": false
+      },
+      "delta_aic": 17.846805484304653,
+      "delta_aic_sat_minus_log": 17.846805484304653,
+      "delta_aic_log_minus_sat": -17.846805484304653,
+      "delta_aicc_sat_minus_log": 20.132519770018945,
+      "delta_aicc_log_minus_sat": -20.132519770018945,
+      "aic_saturating": -95.75015303778824,
+      "aic_loglinear": -113.59695852209289,
+      "aicc_saturating": -91.75015303778824,
+      "aicc_loglinear": -111.88267280780718,
+      "preferred_model": "log-linear",
+      "expected_preferred_model": "log-linear",
+      "expected_sign_sat_minus_log": "positive",
+      "actual_sign_sat_minus_log": "positive",
+      "actual_sign_aicc_sat_minus_log": "positive",
+      "gate_decision": "OUT_OF_SCOPE",
+      "gate_reason": "AICC_LOG_PREFERRED",
+      "solver_calibration": {
+        "enabled": true,
+        "delta": 0.5,
+        "required_L_values": [
+          8,
+          12,
+          16
+        ],
+        "abs_tol": 0.001,
+        "rel_tol": 0.001,
+        "strict_all_must_pass": true,
+        "calibration_pass": true,
+        "status": "PASS",
+        "reason": "OK",
+        "required_points": 3,
+        "checked_points": 3,
+        "passed_points": 3,
+        "failed_points": 0,
+        "missing_points": 0,
+        "error_points": 0,
+        "overlap_points": [
+          {
+            "L": 8,
+            "status": "PASS",
+            "S_ed": 0.6970923269075024,
+            "S_dmrg": 0.697092326902649,
+            "dmrg_status": "OK",
+            "delta_s": 4.853450974451334e-12,
+            "rel_delta_s": 4.853450974451334e-12,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          },
+          {
+            "L": 12,
+            "status": "PASS",
+            "S_ed": 0.8183125810806234,
+            "S_dmrg": 0.8183125815272854,
+            "dmrg_status": "OK",
+            "delta_s": 4.466619296650265e-10,
+            "rel_delta_s": 4.466619296650265e-10,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          },
+          {
+            "L": 16,
+            "status": "PASS",
+            "S_ed": 0.9023259696738846,
+            "S_dmrg": 0.9023259672726495,
+            "dmrg_status": "OK",
+            "delta_s": 2.401235099647181e-09,
+            "rel_delta_s": 2.401235099647181e-09,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          }
+        ]
+      },
+      "model_selection_audit": {
+        "aicc_used_for_gating": true,
+        "aicc_evaluated_for_audit": true,
+        "blocked_by_solver_calibration": false,
+        "blocking_reason": null
+      },
+      "fit_series": {
+        "source": "ED_PLUS_DMRG",
+        "pooling_mode": "pool_if_overlap_pass",
+        "pooling_applied": true,
+        "pooling_reason": "POOL_APPLIED_OVERLAP_PASS",
+        "n_fit_points": 10,
+        "L_values": [
+          8,
+          12,
+          16,
+          20,
+          24,
+          28,
+          32,
+          36,
+          40,
+          44
+        ],
+        "source_by_L": {
+          "8": "ED",
+          "12": "ED",
+          "16": "ED",
+          "20": "DMRG",
+          "24": "DMRG",
+          "28": "DMRG",
+          "32": "DMRG",
+          "36": "DMRG",
+          "40": "DMRG",
+          "44": "DMRG"
+        },
+        "parity_control": "L_mod_4_eq_0"
+      },
+      "verdict": "REJECT",
+      "scope_correct": true
+    },
+    {
+      "delta": 2.0,
+      "expected_scope": "IN_SCOPE",
+      "measurements": [
+        {
+          "L": 8,
+          "delta": 2.0,
+          "E0": -4.611274141649158,
+          "S_entropy": 0.7592390594397557,
+          "kappa2": 0.890333792918406,
+          "A_size": 4,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 12,
+          "delta": 2.0,
+          "E0": -7.056954786581867,
+          "S_entropy": 0.9117265669916018,
+          "kappa2": 0.8709861362706877,
+          "A_size": 6,
+          "ed_solver": "sparse_lanczos"
+        },
+        {
+          "L": 16,
+          "delta": 2.0,
+          "E0": -9.51095298050683,
+          "S_entropy": 1.024428267776144,
+          "kappa2": 0.8350122622792171,
+          "A_size": 8,
+          "ed_solver": "sparse_lanczos"
+        }
+      ],
+      "log_model": {
+        "alpha": 0.3609572201130412,
+        "beta": 0.021175075090411683,
+        "rss": 0.0017290641629761072,
+        "aic": -82.62760056087293,
+        "aicc": -80.91331484658723,
+        "bic": -82.02243037488485,
+        "n": 10,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.5011788765446605,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model": {
+        "S_inf": 1.4476699303544482,
+        "A": 1.111606079389341,
+        "xi": 16.64759393260813,
+        "rss": 0.0001371232228054824,
+        "aic": -105.97215692844487,
+        "aicc": -101.97215692844487,
+        "bic": -105.06440164946274,
+        "n": 10,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2320,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_base": {
+        "alpha": 0.3609572201130412,
+        "beta": 0.021175075090411683,
+        "rss": 0.0017290641629761072,
+        "aic": -82.62760056087293,
+        "aicc": -80.91331484658723,
+        "bic": -82.02243037488485,
+        "n": 10,
+        "k": 2,
+        "log_base": "e",
+        "entropy_units": "bits",
+        "c_eff_obc_from_alpha_bits": 1.5011788765446605,
+        "alpha_to_c_eff_obc_factor": 4.1588830833596715,
+        "fit_status": "OK",
+        "optimizer": "linear_least_squares",
+        "converged_clean": true
+      },
+      "sat_model_base": {
+        "S_inf": 1.4476699303544482,
+        "A": 1.111606079389341,
+        "xi": 16.64759393260813,
+        "rss": 0.0001371232228054824,
+        "aic": -105.97215692844487,
+        "aicc": -101.97215692844487,
+        "bic": -105.06440164946274,
+        "n": 10,
+        "k": 3,
+        "constraints": {
+          "S_inf_gte_0": true,
+          "A_gte_0": true,
+          "xi_gt_0": true
+        },
+        "fit_status": "OK",
+        "optimizer": "grid_search_closed_form_A",
+        "candidates_total": 2400,
+        "candidates_valid": 2320,
+        "boundary_hits": {
+          "S_inf": false,
+          "A": false,
+          "xi": false
+        },
+        "at_constraint": {
+          "S_inf_gte_0": false,
+          "A_gte_0": false,
+          "xi_gt_0": false
+        },
+        "converged_clean": true
+      },
+      "log_model_osc": null,
+      "sat_model_osc": null,
+      "fit_variant": "base",
+      "oscillation_diagnostics": {
+        "mode": "off",
+        "alternation_fraction": 0.2222222222222222,
+        "alternation_threshold": 0.75,
+        "detected": false,
+        "aicc_improve_log": null,
+        "aicc_improve_sat": null,
+        "aicc_improve_threshold": 2.0,
+        "used_for_gating": false
+      },
+      "delta_aic": -23.34455636757194,
+      "delta_aic_sat_minus_log": -23.34455636757194,
+      "delta_aic_log_minus_sat": 23.34455636757194,
+      "delta_aicc_sat_minus_log": -21.058842081857648,
+      "delta_aicc_log_minus_sat": 21.058842081857648,
+      "aic_saturating": -105.97215692844487,
+      "aic_loglinear": -82.62760056087293,
+      "aicc_saturating": -101.97215692844487,
+      "aicc_loglinear": -80.91331484658723,
+      "preferred_model": "saturating",
+      "expected_preferred_model": "saturating",
+      "expected_sign_sat_minus_log": "negative",
+      "actual_sign_sat_minus_log": "negative",
+      "actual_sign_aicc_sat_minus_log": "negative",
+      "gate_decision": "IN_SCOPE",
+      "gate_reason": "AICC_SATURATION_PREFERRED",
+      "solver_calibration": {
+        "enabled": true,
+        "delta": 2.0,
+        "required_L_values": [
+          8,
+          12,
+          16
+        ],
+        "abs_tol": 0.001,
+        "rel_tol": 0.001,
+        "strict_all_must_pass": true,
+        "calibration_pass": true,
+        "status": "PASS",
+        "reason": "OK",
+        "required_points": 3,
+        "checked_points": 3,
+        "passed_points": 3,
+        "failed_points": 0,
+        "missing_points": 0,
+        "error_points": 0,
+        "overlap_points": [
+          {
+            "L": 8,
+            "status": "PASS",
+            "S_ed": 0.7592390594397557,
+            "S_dmrg": 0.759239059497353,
+            "dmrg_status": "OK",
+            "delta_s": 5.759737131683096e-11,
+            "rel_delta_s": 5.759737131683096e-11,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          },
+          {
+            "L": 12,
+            "status": "PASS",
+            "S_ed": 0.9117265669916018,
+            "S_dmrg": 0.9117265555512672,
+            "dmrg_status": "OK",
+            "delta_s": 1.1440334568568744e-08,
+            "rel_delta_s": 1.1440334568568744e-08,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          },
+          {
+            "L": 16,
+            "status": "PASS",
+            "S_ed": 1.024428267776144,
+            "S_dmrg": 1.024428265651374,
+            "dmrg_status": "OK",
+            "delta_s": 2.124770137612586e-09,
+            "rel_delta_s": 2.074103384734876e-09,
+            "epsilon_abs": 0.001,
+            "epsilon_rel": 0.001,
+            "pass_abs": true,
+            "pass_rel": true
+          }
+        ]
+      },
+      "model_selection_audit": {
+        "aicc_used_for_gating": true,
+        "aicc_evaluated_for_audit": true,
+        "blocked_by_solver_calibration": false,
+        "blocking_reason": null
+      },
+      "fit_series": {
+        "source": "ED_PLUS_DMRG",
+        "pooling_mode": "pool_if_overlap_pass",
+        "pooling_applied": true,
+        "pooling_reason": "POOL_APPLIED_OVERLAP_PASS",
+        "n_fit_points": 10,
+        "L_values": [
+          8,
+          12,
+          16,
+          20,
+          24,
+          28,
+          32,
+          36,
+          40,
+          44
+        ],
+        "source_by_L": {
+          "8": "ED",
+          "12": "ED",
+          "16": "ED",
+          "20": "DMRG",
+          "24": "DMRG",
+          "28": "DMRG",
+          "32": "DMRG",
+          "36": "DMRG",
+          "40": "DMRG",
+          "44": "DMRG"
+        },
+        "parity_control": "L_mod_4_eq_0"
+      },
+      "verdict": "ACCEPT",
+      "scope_correct": true
+    }
+  ],
+  "summary": {
+    "scope_matches": 2,
+    "conclusive_total": 2,
+    "inconclusive_total": 0,
+    "total": 2,
+    "all_correct": true,
+    "gate_reason_counts": {
+      "AICC_LOG_PREFERRED": 1,
+      "AICC_SATURATION_PREFERRED": 1
+    },
+    "overall_verdict": "SCOPE_VALIDATED"
+  }
+}
