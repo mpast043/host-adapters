@@ -13,8 +13,9 @@ Hamiltonian: H = J Σ_i [(X_i X_{i+1} + Y_i Y_{i+1})/2 + Δ Z_i Z_{i+1}]
 Δ < 1: Gapless (XY phase) → OUT OF SCOPE (expect log growth)
 
 Falsifiers:
-  - Δ > 1: ΔAIC > 0 (saturation preferred) → ACCEPT
-  - Δ ≤ 1: ΔAIC < 0 (log-linear preferred) → REJECT
+  - Sign convention: ΔAIC = AIC_saturation - AIC_log-linear
+  - Δ > 1: ΔAIC < 0 (saturation preferred) → ACCEPT
+  - Δ ≤ 1: ΔAIC > 0 (log-linear preferred) → REJECT
 
 Usage:
   python3 exp_P2_XXZ_boundary_runner.py --L 8 --deltas 0.5,1.0,1.1,1.5,2.0 \\
@@ -35,6 +36,8 @@ from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 
+EPS_AIC = 1e-12
+
 # Add parent for imports
 sys.path.insert(0, str(Path(__file__).parent))
 from claim3.PHYS_PHYSICAL_CONVERGENCE_runner_v2 import (
@@ -46,6 +49,36 @@ def run_id():
     t = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     r = os.urandom(4).hex()
     return f"{t}_{r}"
+
+
+def resolve_output_dir(base_out: Path, run_id_value: str, mode: str = "append") -> Path:
+    """Resolve concrete output directory using append-or-overwrite semantics.
+
+    append (default):
+      - empty/missing base dir -> write directly into base dir
+      - non-empty base dir -> write into base_dir/run_<run_id>
+    overwrite:
+      - write directly into base dir, replacing files as needed
+    """
+    base_out = Path(base_out)
+    if mode == "overwrite":
+        base_out.mkdir(parents=True, exist_ok=True)
+        return base_out
+
+    if not base_out.exists():
+        base_out.mkdir(parents=True, exist_ok=True)
+        return base_out
+
+    if not any(base_out.iterdir()):
+        return base_out
+
+    candidate = base_out / f"run_{run_id_value}"
+    suffix = 1
+    while candidate.exists():
+        candidate = base_out / f"run_{run_id_value}_{suffix:02d}"
+        suffix += 1
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
 
 
 def xxz_hamiltonian(L: int, delta: float, J: float = 1.0, cyclic: bool = True) -> np.ndarray:
@@ -193,8 +226,11 @@ def run_xxz_delta(L: int, delta: float, chi_sweep: List[int],
     # Determine model type for ED
     model_type = "heisenberg_open"  # Use Heisenberg as base
     
-    # For Δ ≠ 1, we need custom Hamiltonian
-    # For now, use approximation: Δ > 1 ≈ Ising-like, Δ < 1 ≈ XY-like
+    # For Δ ≠ 1, we need custom XXZ optimization support.
+    # Current implementation uses proxy models:
+    #   Δ > 1 -> ising_open
+    #   Δ < 1 -> heisenberg_open
+    # Treat this runner as integration/regression until true per-Δ XXZ optimization is implemented.
     if delta > 1:
         # Gapped Ising-like phase
         # Use effective field to simulate gap
@@ -265,23 +301,35 @@ def run_xxz_delta(L: int, delta: float, chi_sweep: List[int],
     
     loglin = fit_loglin(log_chis, ents)
     sat = fit_sat(chis_arr, ents)
-    delta_aic = sat["aic"] - loglin["aic"]
+    aic_saturating = float(sat["aic"])
+    aic_loglinear = float(loglin["aic"])
+    delta_aic_sat_minus_log = aic_saturating - aic_loglinear
+    delta_aic_log_minus_sat = -delta_aic_sat_minus_log
+
+    if aic_saturating + EPS_AIC < aic_loglinear:
+        preferred_model = "saturating"
+    elif aic_loglinear + EPS_AIC < aic_saturating:
+        preferred_model = "log-linear"
+    else:
+        preferred_model = "tie"
     
-    # Scope check
-    # Δ > 1: gapped, expect saturation (ΔAIC > 0)
-    # Δ ≤ 1: critical, expect log growth (ΔAIC < 0)
+    # Scope check (model-comparison first; signs are derived metadata)
+    # Convention:
+    #   delta_aic_sat_minus_log = AIC_saturating - AIC_loglinear
+    # Lower AIC is preferred.
     expected = "IN_SCOPE" if delta > 1 else "OUT_OF_SCOPE"
-    expected_sign = "positive" if delta > 1 else "negative"
-    actual_sign = "positive" if delta_aic > 0 else "negative"
-    scope_correct = (expected_sign == actual_sign)
+    expected_preferred_model = "saturating" if delta > 1 else "log-linear"
+    scope_correct = (preferred_model == expected_preferred_model)
+    expected_sign_sat_minus_log = "negative" if expected_preferred_model == "saturating" else "positive"
+    actual_sign_sat_minus_log = "negative" if delta_aic_sat_minus_log < -EPS_AIC else "positive" if delta_aic_sat_minus_log > EPS_AIC else "zero"
     
     # Verdict
     if delta > 1:
         # Gapped: ACCEPT if saturation preferred
-        verdict = "ACCEPT" if delta_aic > 0 else "REJECT"
+        verdict = "ACCEPT" if preferred_model == "saturating" else "REJECT"
     else:
         # Critical: REJECT if log growth detected (framework correctly out of scope)
-        verdict = "REJECT" if delta_aic < 0 else "ACCEPT"
+        verdict = "REJECT" if preferred_model == "log-linear" else "ACCEPT"
     
     return {
         "delta": delta,
@@ -290,7 +338,13 @@ def run_xxz_delta(L: int, delta: float, chi_sweep: List[int],
         "fits": {
             "loglinear": loglin,
             "saturating": sat,
-            "delta_aic": float(delta_aic),
+            # Legacy field kept for compatibility:
+            # delta_aic == AIC_saturating - AIC_loglinear
+            "delta_aic": float(delta_aic_sat_minus_log),
+            "delta_aic_sat_minus_log": float(delta_aic_sat_minus_log),
+            "delta_aic_log_minus_sat": float(delta_aic_log_minus_sat),
+            "aic_saturating": aic_saturating,
+            "aic_loglinear": aic_loglinear,
             "delta_bic": float(sat["bic"] - loglin["bic"])
         },
         "ed_reference": {
@@ -300,8 +354,10 @@ def run_xxz_delta(L: int, delta: float, chi_sweep: List[int],
         "verdict": verdict,
         "scope_correct": scope_correct,
         "passed": {
-            "expected_sign": expected_sign,
-            "actual_sign": actual_sign,
+            "expected_preferred_model": expected_preferred_model,
+            "preferred_model": preferred_model,
+            "expected_sign_sat_minus_log": expected_sign_sat_minus_log,
+            "actual_sign_sat_minus_log": actual_sign_sat_minus_log,
             "match": scope_correct,
         }
     }
@@ -359,6 +415,8 @@ def run_xxz_boundary_test(cfg: Dict) -> Dict:
             "config": cfg,
             "test": "P2_XXZ_BOUNDARY",
             "version": "1.0.0",
+            "validation_mode": "integration_proxy_models",
+            "framework_correctness_gate": False,
         },
         "results": results,
         "summary": {
@@ -374,10 +432,9 @@ def run_xxz_boundary_test(cfg: Dict) -> Dict:
     }
 
 
-def write_out(res: Dict, out_dir: Path):
+def write_out(res: Dict, out_dir: Path, output_mode: str = "append"):
     """Write results to output directory"""
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = resolve_output_dir(Path(out_dir), res["metadata"]["run_id"], mode=output_mode)
     
     # Metadata
     with open(out_dir / "metadata.json", "w") as f:
@@ -425,7 +482,13 @@ def main():
     p.add_argument("--chi_sweep", default="2,4,8,16", help="Comma-separated χ values")
     p.add_argument("--fit_steps", type=int, default=80, help="MERA optimization steps")
     p.add_argument("--seed", type=int, default=42, help="Random seed")
-    p.add_argument("--output", required=True, help="Output directory")
+    p.add_argument("--output", required=True, help="Output directory (base directory)")
+    p.add_argument(
+        "--output-mode",
+        choices=["append", "overwrite"],
+        default="append",
+        help="append: create run_<id> subdir when output exists; overwrite: write directly into output dir",
+    )
     a = p.parse_args()
     
     cfg = {
@@ -437,7 +500,7 @@ def main():
     }
     
     res = run_xxz_boundary_test(cfg)
-    write_out(res, Path(a.output))
+    write_out(res, Path(a.output), output_mode=a.output_mode)
 
 
 if __name__ == "__main__":
