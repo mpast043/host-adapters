@@ -58,6 +58,28 @@ const WORKFLOW_AUTO_ALLOWED_RE = [
   /\bpython3?\b[\s\S]*\btools\/validate_workflow_auto_run\.py\b/i,
 ];
 const WORKFLOW_AUTO_REPO_RE = /\/tmp\/openclaws\/Repos\/host-adapters\b/i;
+const CFG_OVERRIDE_ALL = "*";
+const CFG_COMMAND_USAGE = [
+  "Usage: /cfg <status|enable|disable> [targets]",
+  "Targets:",
+  "  exec         -> exec, shell, bash, python_exec, subprocess, workflow_auto_exec",
+  "  write        -> write, file_write, fs_write, save, apply_patch, memory_write",
+  "  memory       -> memory_write",
+  "  all | cgf    -> bypass all CGF governance checks",
+  "Examples:",
+  "  /cfg status",
+  "  /cfg enable exec write",
+  "  /cfg disable exec",
+  "  /cfg disable all",
+].join("\n");
+const CFG_TARGET_ALIASES: Record<string, string[]> = {
+  all: [CFG_OVERRIDE_ALL],
+  cgf: [CFG_OVERRIDE_ALL],
+  exec: ["exec", "shell", "bash", "python_exec", "subprocess", "workflow_auto_exec"],
+  write: ["write", "file_write", "fs_write", "save", "apply_patch", "memory_write"],
+  memory: ["memory_write"],
+  memory_write: ["memory_write"],
+};
 
 const state = {
   adapterId: "",
@@ -65,7 +87,108 @@ const state = {
   lastRegisterAttemptAtMs: 0,
   failModes: new Map<string, FailModeRow>(),
   pendingByKey: new Map<string, DecisionEnvelope[]>(),
+  cfgOverrides: new Map<string, { enabledAtMs: number; updatedBy?: string }>(),
 };
+
+function normalizeCfgTarget(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[^a-z0-9_*.-]/g, "");
+}
+
+function resolveCfgTargets(rawTargets: string[]): string[] {
+  const resolved = new Set<string>();
+  for (const rawTarget of rawTargets) {
+    const normalized = normalizeCfgTarget(rawTarget);
+    if (!normalized) continue;
+    const aliasTargets = CFG_TARGET_ALIASES[normalized] || [normalized];
+    for (const target of aliasTargets) {
+      const normalizedTarget = normalizeCfgTarget(target);
+      if (normalizedTarget) resolved.add(normalizedTarget);
+    }
+  }
+  return Array.from(resolved).sort();
+}
+
+function hasCfgOverride(target: string): boolean {
+  const normalized = normalizeCfgTarget(target);
+  if (!normalized) return false;
+  return state.cfgOverrides.has(CFG_OVERRIDE_ALL) || state.cfgOverrides.has(normalized);
+}
+
+function activeCfgOverrides(): string[] {
+  return Array.from(state.cfgOverrides.keys()).sort();
+}
+
+function shouldBypassToolGovernance(rawToolName: string, policyToolName: string): boolean {
+  return hasCfgOverride(rawToolName) || hasCfgOverride(policyToolName);
+}
+
+function formatCfgStatus(): string {
+  const active = activeCfgOverrides();
+  if (active.length === 0) {
+    return `CGF overrides: none\n${CFG_COMMAND_USAGE}`;
+  }
+  return `CGF overrides enabled: ${active.join(", ")}\n${CFG_COMMAND_USAGE}`;
+}
+
+function registerCfgCommand(api: OpenClawPluginApi, config: PluginConfig): void {
+  api.registerCommand({
+    name: "cfg",
+    description: "Toggle CGF governance overrides for tool and memory-write checks.",
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: async (ctx) => {
+      const input = (ctx.args || "").trim();
+      if (!input) {
+        return { text: formatCfgStatus() };
+      }
+
+      const tokens = input.split(/[\s,]+/).filter(Boolean);
+      const action = tokens[0]?.toLowerCase();
+      const rawTargets = tokens.slice(1);
+
+      if (action === "status" || action === "list") {
+        return { text: formatCfgStatus() };
+      }
+      if (action !== "enable" && action !== "disable") {
+        return { text: `Unknown /cfg action: ${action || "(empty)"}\n${CFG_COMMAND_USAGE}` };
+      }
+
+      const resolvedTargets = resolveCfgTargets(rawTargets);
+      if (resolvedTargets.length === 0) {
+        return { text: `No valid targets supplied.\n${CFG_COMMAND_USAGE}` };
+      }
+
+      const updatedBy = ctx.senderId || ctx.from || `${ctx.channel}:${ctx.accountId || "default"}`;
+      if (action === "enable") {
+        const now = Date.now();
+        for (const target of resolvedTargets) {
+          state.cfgOverrides.set(target, { enabledAtMs: now, updatedBy });
+        }
+      } else {
+        for (const target of resolvedTargets) {
+          state.cfgOverrides.delete(target);
+        }
+      }
+
+      const active = activeCfgOverrides();
+      logEvidence(config, "cfg_override_updated", {
+        action,
+        requested_targets: rawTargets,
+        resolved_targets: resolvedTargets,
+        active_overrides: active,
+        channel: ctx.channel,
+        sender_id: ctx.senderId || null,
+        from: ctx.from || null,
+      });
+
+      const verb = action === "enable" ? "Enabled" : "Disabled";
+      const activeText = active.length > 0 ? active.join(", ") : "none";
+      return {
+        text: `${verb} CGF overrides: ${resolvedTargets.join(", ")}\nActive overrides: ${activeText}`,
+      };
+    },
+  });
+}
 
 function normalizeConfig(pluginConfig: Record<string, unknown> | undefined): PluginConfig {
   const cfg = pluginConfig ?? {};
@@ -324,6 +447,21 @@ async function evaluateToolCall(
   const policyToolName = toolClass.policyToolName;
   const riskTier = classifyToolRisk(policyToolName);
   const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (shouldBypassToolGovernance(event.toolName, policyToolName)) {
+    const decisionId = `dec-cfg-override-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    logEvidence(config, "cfg_override_allow", {
+      action_type: "tool_call",
+      proposal_id: proposalId,
+      decision_id: decisionId,
+      tool_name: event.toolName,
+      policy_tool_name: policyToolName,
+      session_key: ctx.sessionKey || null,
+      active_overrides: activeCfgOverrides(),
+    });
+    return { decision: "ALLOW", decisionId, proposalId };
+  }
+
   const paramsHash = hashInput(event.params);
 
   const requestBody: JsonMap = {
@@ -507,6 +645,19 @@ function installMemoryWriteGate(config: PluginConfig, api: OpenClawPluginApi): v
     store: Record<string, unknown>;
     opts?: Record<string, unknown>;
   }) => {
+    if (hasCfgOverride("memory_write")) {
+      logEvidence(config, "cfg_override_allow", {
+        action_type: "memory_write",
+        store_path: params.storePath || null,
+        session_key: (params.opts?.activeSessionKey as string) || null,
+        active_overrides: activeCfgOverrides(),
+      });
+      return {
+        allowed: true,
+        reason: "memory_write allowed by /cfg override",
+      };
+    }
+
     await ensureRegistered(config, api);
 
     const storeString = stableStringify(params.store || {});
@@ -627,8 +778,11 @@ function uninstallMemoryWriteGate(): void {
 function register(api: OpenClawPluginApi): void {
   const config = normalizeConfig(api.pluginConfig as Record<string, unknown> | undefined);
   ensureDir(config.dataDir);
+  registerCfgCommand(api, config);
 
   api.on("gateway_start", async () => {
+    // Safety default: runtime overrides always start disabled on gateway boot.
+    state.cfgOverrides.clear();
     await ensureRegistered(config, api);
     installMemoryWriteGate(config, api);
     api.logger.info(
