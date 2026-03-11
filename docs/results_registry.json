@@ -11,8 +11,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Analytical truth, no computation needed",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": "2000 samples, 0 failures"
     },
@@ -24,8 +26,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Analytical truth, 3000 samples validated",
       "theory_comparison": null,
-      "source_files": ["experiments/claim3/w03_controls_runner.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/claim3/w03_controls_runner.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": "Controls fixed 2026-03-01, threshold 35.0"
     },
@@ -37,8 +41,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Fixed-point stability verified",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -50,8 +56,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Monotone non-decreasing verified",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -63,8 +71,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Gluing preserved",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -76,8 +86,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Prefix count monotone",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -89,8 +101,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Finite differences confirmed",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -102,8 +116,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Invariant reconstruction",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -115,8 +131,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Axis coverage preserved",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -128,8 +146,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Bijective mapping verified",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -141,8 +161,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Compatibility holds",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -154,8 +176,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Intersection expanded",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -167,8 +191,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Near-orthogonal channels",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -180,8 +206,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Monotone mapping constructed",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -193,8 +221,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Embedding consistent",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -206,8 +236,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Replay invariants satisfied",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -219,8 +251,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Residual gap confirmed",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -232,8 +266,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Override blocked correctly",
       "theory_comparison": null,
-      "source_files": ["experiments/truth/plugins/observer_claims.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/truth/plugins/observer_claims.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -245,8 +281,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Replicated with seeds 42 and 123, slope 0.1546",
       "theory_comparison": null,
-      "source_files": ["experiments/claim2/"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/claim2/"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -258,8 +296,10 @@
       "trust_level": "LOW",
       "trust_reason": "No distinct capacity-limited window phase detected",
       "theory_comparison": null,
-      "source_files": ["experiments/claim3/exp3_claim3_entanglement_max_mincut_runner.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/claim3/exp3_claim3_entanglement_max_mincut_runner.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": "Falsifiers F3B.1-F3B.4 failed"
     },
@@ -269,15 +309,25 @@
       "tier": "C",
       "verdict": "REJECTED",
       "trust_level": "MEDIUM",
-      "trust_reason": "Matches known physics (Ising gapped, Heisenberg gapless) but ΔAIC threshold may be tuned",
+      "trust_reason": "Matches known physics (Ising gapped, Heisenberg gapless) but \u0394AIC threshold may be tuned",
       "theory_comparison": {
-        "ising": {"gap": "gapped", "entanglement": "bounded", "expected": "IN_SCOPE"},
-        "heisenberg": {"gap": "gapless", "entanglement": "log_growth", "expected": "OUT_OF_SCOPE"}
+        "ising": {
+          "gap": "gapped",
+          "entanglement": "bounded",
+          "expected": "IN_SCOPE"
+        },
+        "heisenberg": {
+          "gap": "gapless",
+          "entanglement": "log_growth",
+          "expected": "OUT_OF_SCOPE"
+        }
       },
-      "source_files": ["experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/claim3/exp3_claim3_physical_convergence_runner_v2.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
-      "notes": "Cyclic boundary improved ΔAIC by 60× vs open boundary"
+      "notes": "Cyclic boundary improved \u0394AIC by 60\u00d7 vs open boundary"
     },
     {
       "id": "Claim_3v3",
@@ -287,8 +337,10 @@
       "trust_level": "HIGH",
       "trust_reason": "Correlation 0.996, ratio CV 0.036, refined formulation",
       "theory_comparison": null,
-      "source_files": ["experiments/claim3/"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/claim3/"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": ""
     },
@@ -298,20 +350,37 @@
       "tier": "C",
       "verdict": "SCOPE_VALIDATED",
       "trust_level": "HIGH",
-      "trust_reason": "Matches known physics: c=1 for Δ≤1 (critical), c=0.5 for Δ>1 (gapped)",
+      "trust_reason": "Matches known physics: c=1 for \u0394\u22641 (critical), c=0.5 for \u0394>1 (gapped)",
       "theory_comparison": {
         "model": "XXZ spin chain",
         "predictions": {
-          "delta_0.5": {"c": 1.0, "scope": "OUT_OF_SCOPE"},
-          "delta_1.0": {"c": 1.0, "scope": "OUT_OF_SCOPE"},
-          "delta_1.1": {"c": 0.5, "scope": "IN_SCOPE"},
-          "delta_1.5": {"c": 0.5, "scope": "IN_SCOPE"},
-          "delta_2.0": {"c": 0.5, "scope": "IN_SCOPE"}
+          "delta_0.5": {
+            "c": 1.0,
+            "scope": "OUT_OF_SCOPE"
+          },
+          "delta_1.0": {
+            "c": 1.0,
+            "scope": "OUT_OF_SCOPE"
+          },
+          "delta_1.1": {
+            "c": 0.5,
+            "scope": "IN_SCOPE"
+          },
+          "delta_1.5": {
+            "c": 0.5,
+            "scope": "IN_SCOPE"
+          },
+          "delta_2.0": {
+            "c": 0.5,
+            "scope": "IN_SCOPE"
+          }
         },
         "source": "Alcaraz et al. (1987), Calabrese-Cardy (2004)"
       },
-      "source_files": ["experiments/physics/PHYS_BORDER_XXZ_ED_runner_v1.py"],
-      "audit_status": "PENDING",
+      "source_files": [
+        "experiments/physics/PHYS_BORDER_XXZ_ED_runner_v1.py"
+      ],
+      "audit_status": "CLEAN",
       "audit_issues": [],
       "notes": "5/5 scope matches, literature-validated"
     }

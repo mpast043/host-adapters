@@ -1,0 +1,196 @@
+[
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/verification/verification_engine.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/verification/ledger.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/verification/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/verification/run_step3.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/truth_generator.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/schema.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/selection/selection_engine.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/selection/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/selection/schema.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/scaling_dimensions_runner.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/build_converged_mera_state.py",
+    "issues": [
+      {
+        "line": 53,
+        "pattern": "paper_value",
+        "code": "e[i, j] = 1.0",
+        "severity": "MEDIUM"
+      }
+    ],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 1,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/entanglement_gap_analysis.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/entanglement_utils.py",
+    "issues": [
+      {
+        "line": 204,
+        "pattern": "paper_value",
+        "code": "basis[n, i, j] = 1.0",
+        "severity": "MEDIUM"
+      }
+    ],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 1,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/physics/ascending_superoperator_runner.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/plugins/regression_claims.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/plugins/observer_claims.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  },
+  {
+    "file": "/Users/meganpastore/Projects/host-adapters/experiments/truth/plugins/__init__.py",
+    "issues": [],
+    "summary": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 0
+    }
+  }
+]
