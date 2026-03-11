@@ -1,17 +1,17 @@
 # Canonical State
 
-Last updated: 2026-02-27
+Last updated: 2026-03-11
 
 ## Canonical Repository
 
 The canonical repository for Framework v4.5 governance and workflow execution is:
 
-- `/tmp/openclaws/Repos/host-adapters`
+- `~/Projects/host-adapters` (main code)
 - GitHub: `https://github.com/mpast043/host-adapters`
 
 Experimental artifacts are separated to:
 
-- `/tmp/openclaws/Repos/host-adapters-experimental-data`
+- `~/Projects/host-adapters-experimental-data`
 - GitHub: `https://github.com/mpast043/host-adapters-experimental-data`
 
 All execution, validation, and productization work should be authored here first.
@@ -44,6 +44,12 @@ The following are useful references but not canonical for merge decisions:
 
 - `/Users/meganpastore/Clawdbot/.openclaw/workspace`
 - `/Users/meganpastore/Clawdbot/Repos/framework-recon-clone`
+
+## Archived Locations (2026-03-11)
+
+The following were moved to `~/Archive/host-adapters-old/` during consolidation:
+
+- `~/Downloads/host-adapters-main` → `downloads-main/`
 
 ## Canonicalization Rules
 
