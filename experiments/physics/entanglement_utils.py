@@ -1,521 +1,346 @@
-"""
-Entanglement Utility Module for Physics Grounding Implementation.
+"""Entanglement utilities and MERA scaling-dimension extraction helpers."""
 
-This module provides utilities for computing entanglement-related quantities
-to test the hypothesis that capacity C is proportional to entanglement entropy S.
+from __future__ import annotations
 
-Functions include:
-- von Neumann entropy calculation
-- Renyi entropy calculation
-- Reduced density matrix computation
-- Entanglement spectrum and gap analysis
-- Capacity-entanglement correlation analysis
-"""
-
-from typing import List, Dict, Any
+import math
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
-from scipy import linalg
-from scipy import stats
+
+try:
+    from scipy import stats as scipy_stats
+except Exception:  # pragma: no cover - scipy is optional
+    scipy_stats = None
 
 
-# Module-level constants
-NUMERICAL_TOLERANCE = 1e-12
-QUBIT_DIM = 2
+def _validate_square_matrix(matrix: np.ndarray, *, name: str) -> np.ndarray:
+    arr = np.asarray(matrix, dtype=complex)
+    if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
+        raise ValueError(f"{name} must be a square 2D matrix")
+    return arr
 
 
-def _validate_density_matrix(rho: np.ndarray) -> None:
-    """
-    Validate that an array is a valid density matrix.
+def entanglement_spectrum(rho: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Return sorted non-zero eigenvalues of a density matrix."""
+    rho = _validate_square_matrix(rho, name="rho")
+    rho_h = 0.5 * (rho + rho.conj().T)
+    eigvals = np.linalg.eigvalsh(rho_h).real
+    eigvals = np.clip(eigvals, 0.0, None)
 
-    A valid density matrix must be:
-    - 2-dimensional and square
-    - Hermitian (rho = rho^dagger)
-    - Trace equal to 1 (within numerical tolerance)
-    - Positive semidefinite (all eigenvalues >= 0)
+    total = float(np.sum(eigvals))
+    if total <= eps:
+        raise ValueError("rho must have positive trace")
+    eigvals = eigvals / total
 
-    Parameters
-    ----------
-    rho : np.ndarray
-        Array to validate as a density matrix
-
-    Raises
-    ------
-    ValueError
-        If any validation check fails, with a descriptive error message
-    """
-    # Check that rho is a numpy array
-    if not isinstance(rho, np.ndarray):
-        raise ValueError(f"Density matrix must be a numpy array, got {type(rho).__name__}")
-
-    # Check that rho is 2-dimensional
-    if rho.ndim != 2:
-        raise ValueError(f"Density matrix must be 2-dimensional, got {rho.ndim} dimensions")
-
-    # Check that rho is square
-    if rho.shape[0] != rho.shape[1]:
-        raise ValueError(f"Density matrix must be square, got shape {rho.shape}")
-
-    # Check Hermiticity: rho should equal its conjugate transpose
-    if not np.allclose(rho, rho.conj().T, atol=NUMERICAL_TOLERANCE):
-        hermitian_diff = np.max(np.abs(rho - rho.conj().T))
-        raise ValueError(
-            f"Density matrix must be Hermitian (equal to its conjugate transpose). "
-            f"Maximum deviation from Hermiticity: {hermitian_diff:.2e}"
-        )
-
-    # Check trace equals 1
-    trace = np.trace(rho)
-    if not np.isclose(trace, 1.0, atol=NUMERICAL_TOLERANCE):
-        raise ValueError(
-            f"Density matrix must have trace equal to 1. Got trace = {trace:.6f}"
-        )
-
-    # Check positive semidefinite: all eigenvalues must be >= 0
-    eigenvalues = linalg.eigvalsh(rho)
-    min_eigenvalue = np.min(eigenvalues)
-    if min_eigenvalue < -NUMERICAL_TOLERANCE:
-        raise ValueError(
-            f"Density matrix must be positive semidefinite. "
-            f"Minimum eigenvalue: {min_eigenvalue:.2e}"
-        )
+    spec = eigvals[eigvals > eps]
+    return np.sort(spec)[::-1]
 
 
-def _get_valid_eigenvalues(rho: np.ndarray, eps: float) -> np.ndarray:
-    """
-    Compute eigenvalues of a density matrix and filter out negligible values.
-
-    Parameters
-    ----------
-    rho : np.ndarray
-        Density matrix (assumed to be validated)
-    eps : float
-        Threshold below which eigenvalues are considered negligible
-
-    Returns
-    -------
-    np.ndarray
-        Array of eigenvalues greater than eps
-
-    Raises
-    ------
-    ValueError
-        If all eigenvalues are filtered out (empty spectrum)
-    """
-    eigenvalues = linalg.eigvalsh(rho)
-    valid_eigenvalues = eigenvalues[eigenvalues > eps]
-
-    if len(valid_eigenvalues) == 0:
-        raise ValueError(
-            f"All eigenvalues are below threshold eps={eps:.2e}. "
-            f"This may indicate a degenerate or invalid density matrix. "
-            f"Eigenvalue range: [{np.min(eigenvalues):.2e}, {np.max(eigenvalues):.2e}]"
-        )
-
-    return valid_eigenvalues
+def von_neumann_entropy(rho: np.ndarray, eps: float = 1e-12) -> float:
+    """Compute S(ρ) = -Tr(ρ ln ρ) in natural log units."""
+    spec = entanglement_spectrum(rho, eps=eps)
+    return float(-np.sum(spec * np.log(spec)))
 
 
-def von_neumann_entropy(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
-    """
-    Compute the von Neumann entropy of a density matrix.
-
-    S = -Tr(ρ log ρ)
-
-    Parameters
-    ----------
-    rho : np.ndarray
-        Density matrix (Hermitian, positive semidefinite, trace 1)
-    eps : float, optional
-        Small value to avoid log(0), default 1e-12
-
-    Returns
-    -------
-    float
-        Von Neumann entropy in nats
-
-    Raises
-    ------
-    ValueError
-        If rho is not a valid density matrix or all eigenvalues are filtered out
-    """
-    _validate_density_matrix(rho)
-
-    # Get valid eigenvalues of the density matrix
-    eigenvalues = _get_valid_eigenvalues(rho, eps)
-
-    # Compute entropy: S = -sum(λ log λ)
-    entropy = -np.sum(eigenvalues * np.log(eigenvalues))
-
-    return float(entropy)
-
-
-def renyi_entropy(rho: np.ndarray, alpha: float, eps: float = NUMERICAL_TOLERANCE) -> float:
-    """
-    Compute the Renyi entropy of a density matrix.
-
-    S_α = 1/(1-α) log(Tr(ρ^α))
-
-    For alpha == 1, this becomes the von Neumann entropy.
-
-    Parameters
-    ----------
-    rho : np.ndarray
-        Density matrix (Hermitian, positive semidefinite, trace 1)
-    alpha : float
-        Renyi entropy order (must be > 0, alpha != 1 uses the general formula)
-    eps : float, optional
-        Small value to avoid numerical issues, default 1e-12
-
-    Returns
-    -------
-    float
-        Renyi entropy in nats
-
-    Raises
-    ------
-    ValueError
-        If rho is not a valid density matrix, alpha <= 0, or all eigenvalues are filtered out
-    """
-    # Validate alpha parameter
+def renyi_entropy(rho: np.ndarray, alpha: float = 2.0, eps: float = 1e-12) -> float:
+    """Compute Renyi entropy S_α(ρ) = ln Tr(ρ^α) / (1 - α)."""
     if alpha <= 0:
-        raise ValueError(
-            f"Renyi entropy order alpha must be > 0, got alpha = {alpha}"
-        )
-
-    _validate_density_matrix(rho)
-
-    # For alpha = 1, use von Neumann entropy (the limit as alpha -> 1)
+        raise ValueError("alpha must be > 0")
     if np.isclose(alpha, 1.0):
-        return von_neumann_entropy(rho, eps)
-
-    # Get valid eigenvalues of the density matrix
-    eigenvalues = _get_valid_eigenvalues(rho, eps)
-
-    # Compute Tr(ρ^α)
-    trace_rho_alpha = np.sum(np.power(eigenvalues, alpha))
-
-    # Compute Renyi entropy: S_α = 1/(1-α) log(Tr(ρ^α))
-    entropy = (1.0 / (1.0 - alpha)) * np.log(trace_rho_alpha)
-
-    return float(entropy)
+        return von_neumann_entropy(rho, eps=eps)
+    spec = entanglement_spectrum(rho, eps=eps)
+    return float(np.log(np.sum(spec ** alpha)) / (1.0 - alpha))
 
 
-def reduced_density_matrix(psi: np.ndarray, subsystem_A: List[int], total_sites: int) -> np.ndarray:
-    """
-    Compute the reduced density matrix for subsystem A.
-
-    ρ_A = Tr_B(|ψ⟩⟨ψ|)
-
-    Parameters
-    ----------
-    psi : np.ndarray
-        Wavefunction as a flattened array with 2^total_sites elements
-    subsystem_A : List[int]
-        List of site indices belonging to subsystem A (0-indexed)
-    total_sites : int
-        Total number of sites in the full system
-
-    Returns
-    -------
-    np.ndarray
-        Reduced density matrix for subsystem A
-
-    Raises
-    ------
-    ValueError
-        If psi dimensions don't match total_sites or subsystem_A indices are out of range
-    """
-    # Validate total_sites
+def reduced_density_matrix(psi: np.ndarray, subsystem_A: Sequence[int], total_sites: int) -> np.ndarray:
+    """Compute reduced density matrix ρ_A = Tr_B |ψ><ψ| for qubit systems."""
     if total_sites <= 0:
-        raise ValueError(f"total_sites must be positive, got {total_sites}")
-
-    # Validate psi length matches 2^total_sites
-    expected_length = QUBIT_DIM ** total_sites
-    if len(psi) != expected_length:
-        raise ValueError(
-            f"Wavefunction length must be {QUBIT_DIM}^{total_sites} = {expected_length}, "
-            f"got length {len(psi)}"
-        )
-
-    # Validate subsystem_A indices
+        raise ValueError("total_sites must be positive")
     if not subsystem_A:
         raise ValueError("subsystem_A cannot be empty")
-
-    max_index = max(subsystem_A)
-    min_index = min(subsystem_A)
-
-    if min_index < 0:
-        raise ValueError(
-            f"subsystem_A indices must be non-negative, got minimum index {min_index}"
-        )
-
-    if max_index >= total_sites:
-        raise ValueError(
-            f"subsystem_A indices must be less than total_sites ({total_sites}), "
-            f"got maximum index {max_index}"
-        )
-
-    # Check for duplicate indices
-    if len(subsystem_A) != len(set(subsystem_A)):
+    if len(set(subsystem_A)) != len(subsystem_A):
         raise ValueError("subsystem_A contains duplicate indices")
+    if any(i < 0 for i in subsystem_A):
+        raise ValueError("subsystem_A indices must be non-negative")
+    if any(i >= total_sites for i in subsystem_A):
+        raise ValueError("subsystem_A indices must be less than total_sites")
 
-    # Reshape wavefunction into tensor form
-    # Shape: (QUBIT_DIM, QUBIT_DIM, ..., QUBIT_DIM) with total_sites dimensions
-    psi_tensor = psi.reshape([QUBIT_DIM] * total_sites)
+    expected_size = 2 ** total_sites
+    vec = np.asarray(psi, dtype=complex).reshape(-1)
+    if vec.size != expected_size:
+        raise ValueError(f"Wavefunction length must be {expected_size} for total_sites={total_sites}")
 
-    # Determine subsystem B (complement of A)
-    all_sites = set(range(total_sites))
-    subsystem_B = sorted(all_sites - set(subsystem_A))
+    norm = np.linalg.norm(vec)
+    if norm <= 1e-15:
+        raise ValueError("psi must have non-zero norm")
+    vec = vec / norm
 
-    # Number of sites in each subsystem
-    n_A = len(subsystem_A)
-    n_B = len(subsystem_B)
+    psi_tensor = vec.reshape((2,) * total_sites)
+    subsystem_B = [i for i in range(total_sites) if i not in subsystem_A]
+    perm = list(subsystem_A) + subsystem_B
 
-    # Dimension of each subsystem
-    dim_A = QUBIT_DIM ** n_A
-    dim_B = QUBIT_DIM ** n_B
+    psi_ab = np.transpose(psi_tensor, axes=perm).reshape(2 ** len(subsystem_A), 2 ** len(subsystem_B))
+    rho_a = psi_ab @ psi_ab.conj().T
+    rho_a = 0.5 * (rho_a + rho_a.conj().T)
 
-    # Rearrange axes: first A indices, then B indices
-    # This groups all A sites together and all B sites together
-    axis_order = subsystem_A + subsystem_B
-    psi_reordered = np.transpose(psi_tensor, axis_order)
-
-    # Reshape into matrix form: (dim_A, dim_B)
-    psi_matrix = psi_reordered.reshape(dim_A, dim_B)
-
-    # Compute the density matrix |ψ⟩⟨ψ| and trace over B
-    # |ψ⟩⟨ψ| is a (dim_A, dim_B) x (dim_A, dim_B) matrix
-    # Tracing over B gives a (dim_A, dim_A) matrix
-    # ρ_A = ψ ψ^† where we sum over the B index
-    rho_A = psi_matrix @ psi_matrix.conj().T
-
-    return rho_A
+    tr = np.trace(rho_a).real
+    if tr <= 0:
+        raise ValueError("computed reduced density matrix has non-positive trace")
+    return rho_a / tr
 
 
-def entanglement_spectrum(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> np.ndarray:
-    """
-    Compute the entanglement spectrum (eigenvalues of reduced density matrix).
-
-    Parameters
-    ----------
-    rho : np.ndarray
-        Reduced density matrix
-    eps : float, optional
-        Small value to filter out negligible eigenvalues, default 1e-12
-
-    Returns
-    -------
-    np.ndarray
-        Eigenvalues sorted in descending order
-
-    Raises
-    ------
-    ValueError
-        If rho is not a valid density matrix or all eigenvalues are filtered out
-    """
-    _validate_density_matrix(rho)
-
-    # Get valid eigenvalues
-    eigenvalues = _get_valid_eigenvalues(rho, eps)
-
-    # Sort in descending order
-    eigenvalues_sorted = np.sort(eigenvalues)[::-1]
-
-    return eigenvalues_sorted
+def entanglement_gap(rho: np.ndarray, eps: float = 1e-12) -> float:
+    """Compute Schmidt/entanglement gap λ0 - λ1."""
+    spec = entanglement_spectrum(rho, eps=eps)
+    if spec.size < 2:
+        return 0.0
+    return float(spec[0] - spec[1])
 
 
-def entanglement_gap(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
-    """
-    Compute the entanglement gap.
+def capacity_of_entanglement(rho: np.ndarray, eps: float = 1e-12) -> float:
+    """Compute C_E = Var(H_A), where H_A = -ln(ρ_A)."""
+    spec = entanglement_spectrum(rho, eps=eps)
+    if spec.size <= 1:
+        return 0.0
+    modular = -np.log(spec)
+    mean_1 = float(np.sum(spec * modular))
+    mean_2 = float(np.sum(spec * modular * modular))
+    return mean_2 - mean_1 * mean_1
 
-    The entanglement gap is the difference between the two largest
-    Schmidt values (eigenvalues of the reduced density matrix).
 
-    Parameters
-    ----------
-    rho : np.ndarray
-        Reduced density matrix
-    eps : float, optional
-        Small value for numerical stability, default 1e-12
+def capacity_from_entanglement(entropy: float, normalization: float = 1.0) -> float:
+    """Simple linear capacity proxy C = normalization * S."""
+    return float(normalization * entropy)
 
-    Returns
-    -------
-    float
-        Entanglement gap: λ_0 - λ_1
 
-    Raises
-    ------
-    ValueError
-        If rho is not a valid density matrix or all eigenvalues are filtered out
-    """
-    spectrum = entanglement_spectrum(rho, eps)
-
-    if len(spectrum) < 2:
-        # If there's only one eigenvalue, the gap is zero
+def _correlation_p_value(correlation: float, n_points: int) -> float:
+    if n_points < 3 or not np.isfinite(correlation):
+        return float("nan")
+    corr = float(np.clip(correlation, -1.0, 1.0))
+    if np.isclose(abs(corr), 1.0):
         return 0.0
 
-    return float(spectrum[0] - spectrum[1])
+    t_stat = abs(corr) * math.sqrt((n_points - 2) / max(1e-15, 1.0 - corr * corr))
+    if scipy_stats is not None:
+        return float(2.0 * scipy_stats.t.sf(t_stat, n_points - 2))
 
-
-def capacity_of_entanglement(rho: np.ndarray, eps: float = NUMERICAL_TOLERANCE) -> float:
-    """
-    Compute capacity of entanglement (second cumulant of spectrum).
-
-    C_E = Tr(ρ(ln ρ)²) - [Tr(ρ ln ρ)]² = Var(H_A)
-
-    From de Boer et al. PRD 99, 066012 (2019).
-
-    Parameters
-    ----------
-    rho : np.ndarray
-        Reduced density matrix (Hermitian, positive semidefinite, trace 1)
-    eps : float, optional
-        Cutoff for numerical stability, default 1e-12
-
-    Returns
-    -------
-    float
-        Capacity of entanglement (dimensionless)
-
-    Raises
-    ------
-    ValueError
-        If rho is not a valid density matrix or all eigenvalues are filtered out
-    """
-    _validate_density_matrix(rho)
-
-    # Get valid eigenvalues of the density matrix
-    eigenvalues = _get_valid_eigenvalues(rho, eps)
-
-    # Compute log of eigenvalues
-    log_lam = np.log(eigenvalues)
-
-    # Entropy (first cumulant): S = -sum(λ log λ)
-    S = -np.sum(eigenvalues * log_lam)
-
-    # Capacity (second cumulant): C = sum(λ (log λ)²) - S²
-    C = np.sum(eigenvalues * log_lam**2) - S**2
-
-    return float(C)
-
-
-def capacity_from_entanglement(S: float, normalization: float = 1.0) -> float:
-    """
-    Convert entanglement entropy to capacity.
-
-    This implements the hypothesis that capacity C is proportional
-    to entanglement entropy S.
-
-    Parameters
-    ----------
-    S : float
-        Entanglement entropy in nats
-    normalization : float, optional
-        Proportionality constant, default 1.0
-
-    Returns
-    -------
-    float
-        Capacity C = normalization * S
-    """
-    return normalization * S
+    # Normal approximation fallback when scipy is unavailable.
+    return float(math.erfc(t_stat / math.sqrt(2.0)))
 
 
 def analyze_capacity_entanglement_correlation(
-    capacities: List[float],
-    entropies: List[float]
-) -> Dict[str, Any]:
-    """
-    Analyze the correlation between capacity and entanglement entropy.
+    capacities: Sequence[float],
+    entropies: Sequence[float],
+) -> dict[str, float]:
+    """Fit C = mS + b and report correlation diagnostics."""
+    cap = np.asarray(list(capacities), dtype=float)
+    ent = np.asarray(list(entropies), dtype=float)
 
-    Uses linear regression to test the hypothesis that capacity C
-    is proportional to entanglement entropy S.
-
-    Parameters
-    ----------
-    capacities : List[float]
-        List of capacity values
-    entropies : List[float]
-        List of entanglement entropy values
-
-    Returns
-    -------
-    Dict[str, Any]
-        Dictionary containing:
-        - slope: Regression slope
-        - intercept: Regression intercept
-        - r_squared: Coefficient of determination
-        - p_value: P-value for the slope
-        - std_err: Standard error of the slope
-        - n_points: Number of data points
-        - correlation: Pearson correlation coefficient
-
-    Raises
-    ------
-    ValueError
-        If lists are empty or have different lengths
-    """
-    # Validate inputs
-    if not capacities:
+    if cap.size == 0:
         raise ValueError("capacities list cannot be empty")
-
-    if not entropies:
+    if ent.size == 0:
         raise ValueError("entropies list cannot be empty")
+    if cap.size != ent.size:
+        raise ValueError("capacities and entropies must have the same length")
 
-    if len(capacities) != len(entropies):
-        raise ValueError(
-            f"capacities and entropies must have the same length. "
-            f"Got {len(capacities)} capacities and {len(entropies)} entropies"
-        )
+    if cap.size < 2:
+        slope = float("nan")
+        intercept = float(cap[0])
+        correlation = float("nan")
+    else:
+        slope, intercept = np.polyfit(ent, cap, deg=1)
+        correlation = float(np.corrcoef(ent, cap)[0, 1])
 
-    # Convert to numpy arrays
-    capacities = np.array(capacities)
-    entropies = np.array(entropies)
-
-    # Perform linear regression
-    result = stats.linregress(entropies, capacities)
-
-    # Compute r_squared
-    r_squared = result.rvalue ** 2
-
+    r_squared = float(correlation * correlation) if np.isfinite(correlation) else float("nan")
     return {
-        'slope': float(result.slope),
-        'intercept': float(result.intercept),
-        'r_squared': float(r_squared),
-        'p_value': float(result.pvalue),
-        'std_err': float(result.stderr),
-        'n_points': len(capacities),
-        'correlation': float(result.rvalue)
+        "slope": float(slope),
+        "intercept": float(intercept),
+        "correlation": float(correlation),
+        "r_squared": r_squared,
+        "p_value": _correlation_p_value(correlation, int(cap.size)),
+        "n_points": int(cap.size),
     }
 
 
-def analyze_capacity_entropy_ratio(results: List[Dict]) -> Dict:
-    """Analyze C_E / S ratio across models.
+def analyze_capacity_entropy_ratio(results: Sequence[Mapping[str, float]]) -> dict[str, float | None]:
+    """Summarize C_E/S ratio, expected to trend toward π²/6 for 1+1D CFTs."""
+    ratios: list[float] = []
+    for result in results:
+        entropy = result.get("entropy")
+        capacity = result.get("capacity_of_entanglement")
+        if entropy is None or capacity is None:
+            continue
+        entropy_f = float(entropy)
+        capacity_f = float(capacity)
+        if entropy_f > 0:
+            ratios.append(capacity_f / entropy_f)
 
-    For critical 1+1D systems, we expect C_E and S to both scale
-    logarithmically with system size, but with different coefficients.
-
-    Args:
-        results: List of dicts with 'entropy' and 'capacity_of_entanglement' keys
-
-    Returns:
-        Dict with ratio analysis
-    """
-    ratios = []
-    for r in results:
-        S = r.get("entropy") or r.get("S")
-        C_E = r.get("capacity_of_entanglement") or r.get("C_E")
-        if S is not None and C_E is not None and S > 0:
-            ratios.append(C_E / S)
-
+    expected = float(np.pi**2 / 6.0)
     if not ratios:
-        return {"error": "No valid data points"}
+        return {
+            "mean_ratio": None,
+            "std_ratio": None,
+            "expected_ratio": expected,
+            "deviation_percent": None,
+        }
 
+    mean = float(np.mean(ratios))
     return {
-        "mean_ratio": float(np.mean(ratios)),
+        "mean_ratio": mean,
         "std_ratio": float(np.std(ratios)),
-        "min_ratio": float(np.min(ratios)),
-        "max_ratio": float(np.max(ratios)),
-        "n_points": len(ratios),
-        "ratios": ratios,
+        "expected_ratio": expected,
+        "deviation_percent": float(100.0 * abs(mean - expected) / expected),
     }
+
+
+def _default_operator_basis(local_dim: int) -> np.ndarray:
+    """Return matrix-unit basis E_ij for d x d operators."""
+    if local_dim <= 0:
+        raise ValueError("local_dim must be positive")
+    basis = np.zeros((local_dim * local_dim, local_dim, local_dim), dtype=complex)
+    n = 0
+    for i in range(local_dim):
+        for j in range(local_dim):
+            basis[n, i, j] = 1.0
+            n += 1
+    return basis
+
+
+def _resolve_operator_basis(operator_basis: np.ndarray | None, local_dim: int) -> np.ndarray:
+    if operator_basis is None:
+        return _default_operator_basis(local_dim)
+    basis = np.asarray(operator_basis, dtype=complex)
+    if basis.ndim != 3 or basis.shape[1] != basis.shape[2]:
+        raise ValueError("operator_basis must have shape (n, d, d)")
+    return basis
+
+
+def _resolve_ascending_map(mera_state: Any) -> Callable[[np.ndarray], np.ndarray]:
+    keys = (
+        "ascending_map",
+        "ascend",
+        "ascending_map_fn",
+        "ascending_operator_map",
+        "ascend_operator",
+    )
+
+    if isinstance(mera_state, Mapping):
+        for key in keys:
+            fn = mera_state.get(key)
+            if callable(fn):
+                return fn
+    for key in keys:
+        if hasattr(mera_state, key):
+            fn = getattr(mera_state, key)
+            if callable(fn):
+                return fn
+
+    raise ValueError(
+        "Could not resolve ascending map from MERA state. Provide either "
+        "'ascending_superoperator' or a callable like 'ascending_map'."
+    )
+
+
+def build_ascending_superoperator(
+    mera_state: Any,
+    *,
+    local_dim: int | None = None,
+    operator_basis: np.ndarray | None = None,
+) -> np.ndarray:
+    """Build ascending superoperator A for a converged MERA fixed point.
+
+    Supported inputs:
+    1. `mera_state["ascending_superoperator"]`: direct square matrix.
+    2. `mera_state["ascending_superoperators"]`: list of square matrices to average.
+    3. A callable map (e.g. `ascending_map(op)`) plus an operator basis.
+    """
+    if isinstance(mera_state, Mapping):
+        if "ascending_superoperator" in mera_state:
+            return _validate_square_matrix(
+                np.asarray(mera_state["ascending_superoperator"], dtype=complex),
+                name="ascending_superoperator",
+            )
+        if "ascending_superoperators" in mera_state:
+            mats = [
+                _validate_square_matrix(np.asarray(m, dtype=complex), name="ascending_superoperators entry")
+                for m in mera_state["ascending_superoperators"]
+            ]
+            if not mats:
+                raise ValueError("ascending_superoperators cannot be empty")
+            shape = mats[0].shape
+            if any(m.shape != shape for m in mats):
+                raise ValueError("all ascending_superoperators entries must have the same shape")
+            return np.mean(mats, axis=0)
+
+    d = local_dim
+    if d is None and isinstance(mera_state, Mapping):
+        d = int(mera_state.get("local_dim", 2))
+    if d is None:
+        d = 2
+
+    basis = _resolve_operator_basis(operator_basis, d)
+    asc_map = _resolve_ascending_map(mera_state)
+
+    n_ops, op_dim, _ = basis.shape
+    superop = np.zeros((n_ops, n_ops), dtype=complex)
+    for j in range(n_ops):
+        asc_op = np.asarray(asc_map(basis[j]), dtype=complex)
+        if asc_op.shape != (op_dim, op_dim):
+            raise ValueError(
+                "ascending_map returned operator with shape "
+                f"{asc_op.shape}, expected {(op_dim, op_dim)}"
+            )
+        for i in range(n_ops):
+            superop[i, j] = np.vdot(basis[i], asc_op)
+    return superop
+
+
+def diagonalize_ascending_superoperator(
+    superoperator: np.ndarray,
+    *,
+    max_eigs: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Diagonalize A and sort eigenmodes by descending |λ|."""
+    superoperator = _validate_square_matrix(np.asarray(superoperator, dtype=complex), name="superoperator")
+    eigvals, eigvecs = np.linalg.eig(superoperator)
+    order = np.argsort(-np.abs(eigvals))
+    if max_eigs is not None:
+        order = order[:max_eigs]
+    return eigvals[order], eigvecs[:, order]
+
+
+def scaling_dimensions_from_eigenvalues(eigenvalues: Iterable[complex], eps: float = 1e-14) -> np.ndarray:
+    """Compute Δ_α = -log₂|λ_α| from ascending-superoperator eigenvalues."""
+    lam = np.asarray(list(eigenvalues), dtype=complex)
+    mags = np.abs(lam)
+    dims = np.full(mags.shape, np.inf, dtype=float)
+    mask = mags > eps
+    dims[mask] = -np.log2(mags[mask])
+    return dims
+
+
+def extract_scaling_dimensions_mera(
+    mera_state: Any,
+    num_dims: int = 10,
+    *,
+    local_dim: int | None = None,
+    operator_basis: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
+    """Build A, diagonalize it, and compute scaling dimensions Δ_α."""
+    if num_dims <= 0:
+        raise ValueError("num_dims must be positive")
+
+    superop = build_ascending_superoperator(
+        mera_state,
+        local_dim=local_dim,
+        operator_basis=operator_basis,
+    )
+    eigvals, eigvecs = diagonalize_ascending_superoperator(superop, max_eigs=num_dims)
+    scaling_dims = scaling_dimensions_from_eigenvalues(eigvals)
+    return {
+        "ascending_superoperator": superop,
+        "eigenvalues": eigvals,
+        "eigenvectors": eigvecs,
+        "scaling_dimensions": scaling_dims,
+    }
+

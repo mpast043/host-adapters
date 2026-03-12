@@ -63,3 +63,31 @@ Raw `exec` remains denylisted by policy. The governance plugin applies a narrow 
 - and evaluated by the `workflow-auto-exec-audit` rule in `policy/policy_bundle_v1.json`.
 
 This keeps broad `exec` blocked while allowing audited workflow operations.
+
+## Runtime Override Command (`/cfg`)
+
+The `cgf-governance` plugin now exposes a text command for emergency runtime overrides:
+
+- `/cfg status` — show active override targets
+- `/cfg enable <targets>` — bypass CGF checks for targets
+- `/cfg disable <targets>` — remove bypass targets
+
+Supported targets:
+
+- `exec` (maps to `exec`, `shell`, `bash`, `python_exec`, `subprocess`, `workflow_auto_exec`)
+- `write` (maps to `write`, `file_write`, `fs_write`, `save`, `apply_patch`, `memory_write`)
+- `memory` / `memory_write`
+- `all` / `cgf` (global bypass)
+
+Examples:
+
+```text
+/cfg enable exec write
+/cfg disable exec
+/cfg disable all
+```
+
+Notes:
+
+- `/cfg` requires an authorized sender (`requireAuth: true`).
+- Overrides are in-memory only and reset when Gateway restarts.
